@@ -5,7 +5,6 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -28,6 +27,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -87,16 +88,16 @@ object Storage {
     }
 }
 
-// --- ПРЕМИАЛЬНАЯ ТЕМНАЯ ТЕМА ---
+// --- ПРЕМИАЛЬНАЯ ТЕМНАЯ ТЕМА (Стиль iOS/T-Bank) ---
 private val PremiumDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF00E676),
+    primary = Color(0xFF32D74B), // Чистый приятный зеленый
     onPrimary = Color.Black,
-    primaryContainer = Color(0xFF1E2923),
-    onPrimaryContainer = Color(0xFF00E676),
-    secondary = Color(0xFF29B6F6),
-    background = Color(0xFF0A0A0A),
-    surface = Color(0xFF141414),
-    error = Color(0xFFFF5252)
+    primaryContainer = Color(0xFF1C1C1E), 
+    onPrimaryContainer = Color.White,
+    secondary = Color(0xFF0A84FF), // Чистый синий
+    background = Color(0xFF000000), // Глубокий черный
+    surface = Color(0xFF1C1C1E), // Темно-серый для карточек
+    error = Color(0xFFFF453A) // Чистый красный
 )
 
 class MainActivity : ComponentActivity() {
@@ -107,7 +108,6 @@ class MainActivity : ComponentActivity() {
 }
 
 // --- ОСНОВНАЯ НАВИГАЦИЯ ---
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BudgetApp() {
     val context = LocalContext.current
@@ -152,12 +152,24 @@ fun BudgetApp() {
             }
         }
         
+        // Надежный оверлей вместо капризного ModalBottomSheet
         if (showAddSheet) {
-            ModalBottomSheet(onDismissRequest = { showAddSheet = false }, containerColor = MaterialTheme.colorScheme.surface) {
-                AddExpenseSheet(
-                    onAdd = { exp -> expenses = expenses + exp; showAddSheet = false },
-                    onAddPlanned = { p -> planned = planned + p; showAddSheet = false }
-                )
+            Dialog(
+                onDismissRequest = { showAddSheet = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { showAddSheet = false }, contentAlignment = Alignment.BottomCenter) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = false) {}, // Блокируем клик по самой карточке
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        AddExpenseSheet(
+                            onAdd = { exp -> expenses = expenses + exp; showAddSheet = false },
+                            onAddPlanned = { p -> planned = planned + p; showAddSheet = false }
+                        )
+                    }
+                }
             }
         }
     }
@@ -174,12 +186,13 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            Row(modifier = Modifier.fillMaxWidth().padding(16.dp).pointerInput(Unit) {
+            // ШАПКА
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp).pointerInput(Unit) {
                 detectHorizontalDragGestures(onDragEnd = {}) { change, dragAmount ->
                     change.consume(); if (dragAmount > 20) monthOffset -= 1 else if (dragAmount < -20) monthOffset += 1
                 }
             }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("<", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.Gray, modifier = Modifier.clickable { monthOffset -= 1 }.padding(8.dp))
+                IconButton(onClick = { monthOffset -= 1 }) { Icon(Icons.Default.KeyboardArrowLeft, "Назад", tint = Color.Gray) }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(displayMonth.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -188,7 +201,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                         Switch(checked = rolloverEnabled, onCheckedChange = onToggleRollover, modifier = Modifier.scale(0.7f))
                     }
                 }
-                Text(">", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.Gray, modifier = Modifier.clickable { monthOffset += 1 }.padding(8.dp))
+                IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
             }
         }
 
@@ -221,19 +234,21 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 currentStart = currentEnd.plusDays(1)
             }
 
+            // HERO-БЛОК (ИСПРАВЛЕНО ЦЕНТРИРОВАНИЕ)
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                        Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
-                            Text("${currentWeek.remaining} ₽", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer)
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            Text("${currentWeek.remaining} ₽", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             Text("до ${currentWeek.end.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                 }
             }
 
+            // СПИСОК НЕДЕЛЬ
             items(weeks) { week ->
                 val progress = if (week.limit > 0) (week.spent.toFloat() / week.limit.toFloat()).coerceIn(0f, 1f) else 1f
                 val isOverspent = week.remaining < 0
@@ -258,6 +273,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             }
         }
 
+        // ОТЛОЖЕННЫЕ ТРАТЫ
         item {
             val monthPlanned = planned.filter { it.monthStr == displayMonth.toString() }
             if (monthPlanned.isNotEmpty()) {
@@ -274,7 +290,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(80.dp))
+            Spacer(modifier = Modifier.height(100.dp))
         }
     }
 }
@@ -286,7 +302,7 @@ fun AddExpenseSheet(onAdd: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> 
     var amountInput by remember { mutableStateOf("") }
     var placeInput by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("🛒 Продукты") }
-    val categories = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂️️ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
+    val categories = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
 
     Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -298,8 +314,8 @@ fun AddExpenseSheet(onAdd: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> 
         }
         
         Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Сумма (₽)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = placeInput, onValueChange = { placeInput = it }, label = { Text(if (isPlanned) "Название (Например: КАСКО)" else "Место или комментарий") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Сумма (₽)", color = Color.Gray) }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+        OutlinedTextField(value = placeInput, onValueChange = { placeInput = it }, label = { Text(if (isPlanned) "Название (Например: КАСКО)" else "Место или комментарий", color = Color.Gray) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
         
         if (!isPlanned) {
             var expanded by remember { mutableStateOf(false) }
@@ -334,29 +350,31 @@ fun AnalyticsScreen(expenses: List<Expense>) {
     val totalSpent = monthExpenses.sumOf { it.amount }
     val grouped = monthExpenses.groupBy { it.category }.mapValues { it.value.sumOf { e -> e.amount } }.toList().sortedByDescending { it.second }
 
-    Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("<", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.Gray, modifier = Modifier.clickable { monthOffset -= 1 }.padding(8.dp))
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { monthOffset -= 1 }) { Icon(Icons.Default.KeyboardArrowLeft, "Назад", tint = Color.Gray) }
             Text("Сводка за $displayMonth", style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text(">", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.Gray, modifier = Modifier.clickable { monthOffset += 1 }.padding(8.dp))
+            IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
         }
 
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Всего потрачено", fontSize = 14.sp, color = Color.Gray)
-                Text("$totalSpent ₽", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Всего потрачено", fontSize = 14.sp, color = Color.Gray)
+                    Text("$totalSpent ₽", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                }
             }
-        }
 
-        LazyColumn {
-            items(grouped) { (cat, sum) ->
-                val progress = if (totalSpent > 0) sum.toFloat() / totalSpent.toFloat() else 0f
-                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(cat, fontWeight = FontWeight.Medium, color = Color.White)
-                        Text("$sum ₽", fontWeight = FontWeight.Bold, color = Color.White)
+            LazyColumn {
+                items(grouped) { (cat, sum) ->
+                    val progress = if (totalSpent > 0) sum.toFloat() / totalSpent.toFloat() else 0f
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(cat, fontWeight = FontWeight.Medium, color = Color.White)
+                            Text("$sum ₽", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        LinearProgressIndicator(progress = progress, color = MaterialTheme.colorScheme.secondary, trackColor = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
                     }
-                    LinearProgressIndicator(progress = progress, color = MaterialTheme.colorScheme.secondary, trackColor = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
                 }
             }
         }
@@ -366,11 +384,21 @@ fun AnalyticsScreen(expenses: List<Expense>) {
 // --- ВКЛАДКА 3: ИСТОРИЯ ---
 @Composable
 fun HistoryScreen(expenses: List<Expense>, onUpdate: (List<Expense>) -> Unit) {
+    var monthOffset by remember { mutableStateOf(0) }
+    val displayMonth = YearMonth.now().plusMonths(monthOffset.toLong())
+    val monthExpenses = expenses.filter { YearMonth.from(it.date) == displayMonth }
+    
     var editExpense by remember { mutableStateOf<Expense?>(null) }
-    Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-        Text("История операций", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
-        LazyColumn {
-            items(expenses.sortedByDescending { it.date }) { exp ->
+    
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { monthOffset -= 1 }) { Icon(Icons.Default.KeyboardArrowLeft, "Назад", tint = Color.Gray) }
+            Text("История за $displayMonth", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
+        }
+
+        LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
+            items(monthExpenses.sortedByDescending { it.date }) { exp ->
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editExpense = exp }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
@@ -383,6 +411,7 @@ fun HistoryScreen(expenses: List<Expense>, onUpdate: (List<Expense>) -> Unit) {
             }
         }
     }
+    
     if (editExpense != null) {
         AlertDialog(
             onDismissRequest = { editExpense = null },
@@ -408,10 +437,10 @@ fun MonthsScreen(budgets: Map<YearMonth, Int>, onUpdate: (Map<YearMonth, Int>) -
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Установить новый лимит", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 12.dp))
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(value = selectedMonth.toString(), onValueChange = { selectedMonth = it.toIntOrNull() ?: 1 }, label = { Text("Месяц (1-12)") }, modifier = Modifier.weight(1f).padding(end = 4.dp))
-                    OutlinedTextField(value = selectedYear.toString(), onValueChange = { selectedYear = it.toIntOrNull() ?: 2026 }, label = { Text("Год") }, modifier = Modifier.weight(1f).padding(start = 4.dp))
+                    OutlinedTextField(value = selectedMonth.toString(), onValueChange = { selectedMonth = it.toIntOrNull() ?: 1 }, label = { Text("Месяц (1-12)", color = Color.Gray) }, modifier = Modifier.weight(1f).padding(end = 4.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                    OutlinedTextField(value = selectedYear.toString(), onValueChange = { selectedYear = it.toIntOrNull() ?: 2026 }, label = { Text("Год", color = Color.Gray) }, modifier = Modifier.weight(1f).padding(start = 4.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
                 }
-                OutlinedTextField(value = newLimit, onValueChange = { newLimit = it }, label = { Text("Сумма на месяц (₽)") }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                OutlinedTextField(value = newLimit, onValueChange = { newLimit = it }, label = { Text("Сумма на месяц (₽)", color = Color.Gray) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
                 Button(onClick = {
                     val limitInt = newLimit.toIntOrNull()
                     if (limitInt != null && selectedMonth in 1..12) {
@@ -420,7 +449,7 @@ fun MonthsScreen(budgets: Map<YearMonth, Int>, onUpdate: (Map<YearMonth, Int>) -
                         onUpdate(newBudgets)
                         newLimit = ""
                     }
-                }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("СОХРАНИТЬ ЛИМИТ", fontWeight = FontWeight.Bold, color = Color.Black) }
+                }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) { Text("СОХРАНИТЬ ЛИМИТ", fontWeight = FontWeight.Bold, color = Color.Black) }
             }
         }
         Text("Сохраненные лимиты", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))

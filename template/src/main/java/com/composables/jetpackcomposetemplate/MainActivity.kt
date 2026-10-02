@@ -5,8 +5,10 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,8 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -88,22 +88,22 @@ object Storage {
     }
 }
 
-// --- ПРЕМИАЛЬНАЯ ТЕМНАЯ ТЕМА (Стиль iOS/T-Bank) ---
-private val PremiumDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF32D74B), // Чистый приятный зеленый
+// --- ТЕМА Т-БАНКА ---
+private val TBankColorScheme = darkColorScheme(
+    primary = Color(0xFFFFDD2D), // Фирменный желтый
     onPrimary = Color.Black,
-    primaryContainer = Color(0xFF1C1C1E), 
+    primaryContainer = Color(0xFF222224), // Темно-серые карточки
     onPrimaryContainer = Color.White,
-    secondary = Color(0xFF0A84FF), // Чистый синий
-    background = Color(0xFF000000), // Глубокий черный
-    surface = Color(0xFF1C1C1E), // Темно-серый для карточек
-    error = Color(0xFFFF453A) // Чистый красный
+    secondary = Color(0xFFFFDD2D),
+    background = Color(0xFF121212), // Почти черный фон
+    surface = Color(0xFF222224),
+    error = Color(0xFFFF453A) // Красный
 )
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme(colorScheme = PremiumDarkColorScheme) { BudgetApp() } }
+        setContent { MaterialTheme(colorScheme = TBankColorScheme) { BudgetApp() } }
     }
 }
 
@@ -130,7 +130,8 @@ fun BudgetApp() {
                 FloatingActionButton(
                     onClick = { showAddSheet = true },
                     containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape
                 ) { Icon(Icons.Default.Add, "Добавить расход", modifier = Modifier.size(28.dp)) }
             }
         },
@@ -150,18 +151,22 @@ fun BudgetApp() {
                 2 -> HistoryScreen(expenses, onUpdate = { expenses = it })
                 3 -> MonthsScreen(budgets, onUpdate = { budgets = it })
             }
-        }
-        
-        // Надежный оверлей вместо капризного ModalBottomSheet
-        if (showAddSheet) {
-            Dialog(
-                onDismissRequest = { showAddSheet = false },
-                properties = DialogProperties(usePlatformDefaultWidth = false)
+
+            // КАСТОМНАЯ ШТОРКА ДОБАВЛЕНИЯ (Без багов с клавиатурой)
+            AnimatedVisibility(
+                visible = showAddSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { showAddSheet = false }, contentAlignment = Alignment.BottomCenter) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Затемнение фона
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false })
+                    
+                    // Сама карточка
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable(enabled = false) {}, // Блокируем клик по самой карточке
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                        modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
                         AddExpenseSheet(
@@ -186,7 +191,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            // ШАПКА
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp).pointerInput(Unit) {
                 detectHorizontalDragGestures(onDragEnd = {}) { change, dragAmount ->
                     change.consume(); if (dragAmount > 20) monthOffset -= 1 else if (dragAmount < -20) monthOffset += 1
@@ -198,7 +202,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Перенос остатка", fontSize = 12.sp, color = Color.Gray)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Switch(checked = rolloverEnabled, onCheckedChange = onToggleRollover, modifier = Modifier.scale(0.7f))
+                        Switch(checked = rolloverEnabled, onCheckedChange = onToggleRollover, modifier = Modifier.scale(0.7f), colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary, checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
                     }
                 }
                 IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
@@ -223,7 +227,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 
                 val daysInWeek = currentEnd.dayOfMonth - currentStart.dayOfMonth + 1
                 val baseWeekLimit = (dailyLimit * daysInWeek).roundToInt()
-                
                 val actualLimit = if (rolloverEnabled) baseWeekLimit + carryover else baseWeekLimit
                 val spent = expenses.filter { it.date in currentStart..currentEnd }.sumOf { it.amount }
                 
@@ -234,37 +237,30 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 currentStart = currentEnd.plusDays(1)
             }
 
-            // HERO-БЛОК (ИСПРАВЛЕНО ЦЕНТРИРОВАНИЕ)
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                            Text("${currentWeek.remaining} ₽", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                            Text("${currentWeek.remaining} ₽", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                             Text("до ${currentWeek.end.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                 }
             }
 
-            // СПИСОК НЕДЕЛЬ
             items(weeks) { week ->
                 val progress = if (week.limit > 0) (week.spent.toFloat() / week.limit.toFloat()).coerceIn(0f, 1f) else 1f
                 val isOverspent = week.remaining < 0
-                val barColor = if (isOverspent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                val barColor = if (isOverspent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${week.start.dayOfMonth}.${week.start.monthValue} - ${week.end.dayOfMonth}.${week.end.monthValue}", fontWeight = FontWeight.Bold, color = Color.White)
                         Text("${week.remaining} ₽", fontWeight = FontWeight.Bold, color = if (isOverspent) MaterialTheme.colorScheme.error else Color.White)
                     }
-                    LinearProgressIndicator(
-                        progress = progress, 
-                        color = barColor, 
-                        trackColor = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp))
-                    )
+                    LinearProgressIndicator(progress = progress, color = barColor, trackColor = Color(0xFF333333), modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Траты: ${week.spent} ₽", fontSize = 12.sp, color = Color.Gray)
                         Text("Лимит: ${week.limit} ₽", fontSize = 12.sp, color = Color.Gray)
@@ -273,15 +269,14 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             }
         }
 
-        // ОТЛОЖЕННЫЕ ТРАТЫ
         item {
             val monthPlanned = planned.filter { it.monthStr == displayMonth.toString() }
             if (monthPlanned.isNotEmpty()) {
-                Text("Отложенные траты (вычтено из бюджета)", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp))
+                Text("Отложенные траты (вычтено)", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp))
                 monthPlanned.forEach { p ->
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("📦 ${p.name}", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("📦 ${p.name}", color = Color.White, fontWeight = FontWeight.Medium)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("${p.amount} ₽", color = Color.White, modifier = Modifier.padding(end = 16.dp))
                                 Icon(Icons.Default.Delete, "Удалить", tint = MaterialTheme.colorScheme.error, modifier = Modifier.clickable { onDeletePlanned(p.id) })
@@ -295,7 +290,8 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
     }
 }
 
-// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ ---
+// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ С ДИЗАЙНОМ Т-БАНКА ---
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseSheet(onAdd: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> Unit) {
     var isPlanned by remember { mutableStateOf(false) }
@@ -304,25 +300,37 @@ fun AddExpenseSheet(onAdd: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> 
     var selectedCategory by remember { mutableStateOf("🛒 Продукты") }
     val categories = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
 
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        focusedContainerColor = Color(0xFF2C2C2E),
+        unfocusedContainerColor = Color(0xFF2C2C2E),
+        focusedBorderColor = MaterialTheme.colorScheme.primary,
+        unfocusedBorderColor = Color.Transparent,
+        cursorColor = MaterialTheme.colorScheme.primary
+    )
+
     Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(if (isPlanned) "Отложенная трата" else "Новый расход", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Отложить", fontSize = 12.sp, color = Color.Gray)
-                Switch(checked = isPlanned, onCheckedChange = { isPlanned = it }, modifier = Modifier.padding(start = 8.dp).scale(0.8f))
+                Switch(checked = isPlanned, onCheckedChange = { isPlanned = it }, modifier = Modifier.padding(start = 8.dp).scale(0.8f), colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary, checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
             }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Сумма (₽)", color = Color.Gray) }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
-        OutlinedTextField(value = placeInput, onValueChange = { placeInput = it }, label = { Text(if (isPlanned) "Название (Например: КАСКО)" else "Место или комментарий", color = Color.Gray) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+        OutlinedTextField(value = amountInput, onValueChange = { amountInput = it }, label = { Text("Сумма (₽)", color = Color.Gray) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = textFieldColors)
+        OutlinedTextField(value = placeInput, onValueChange = { placeInput = it }, label = { Text(if (isPlanned) "Название (Например: КАСКО)" else "Место или комментарий", color = Color.Gray) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(12.dp), colors = textFieldColors)
         
         if (!isPlanned) {
             var expanded by remember { mutableStateOf(false) }
             Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("Категория: $selectedCategory", color = Color.White) }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    categories.forEach { cat -> DropdownMenuItem(text = { Text(cat) }, onClick = { selectedCategory = cat; expanded = false }) }
+                OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(12.dp), border = null, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF2C2C2E))) { 
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) { Text("Категория: $selectedCategory", color = Color.White) } 
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                    categories.forEach { cat -> DropdownMenuItem(text = { Text(cat, color = Color.White) }, onClick = { selectedCategory = cat; expanded = false }) }
                 }
             }
         }
@@ -336,6 +344,7 @@ fun AddExpenseSheet(onAdd: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> 
                 }
             },
             modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp).height(50.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) { Text("СОХРАНИТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }
     }
@@ -358,7 +367,7 @@ fun AnalyticsScreen(expenses: List<Expense>) {
         }
 
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Всего потрачено", fontSize = 14.sp, color = Color.Gray)
                     Text("$totalSpent ₽", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
@@ -373,7 +382,7 @@ fun AnalyticsScreen(expenses: List<Expense>) {
                             Text(cat, fontWeight = FontWeight.Medium, color = Color.White)
                             Text("$sum ₽", fontWeight = FontWeight.Bold, color = Color.White)
                         }
-                        LinearProgressIndicator(progress = progress, color = MaterialTheme.colorScheme.secondary, trackColor = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
+                        LinearProgressIndicator(progress = progress, color = MaterialTheme.colorScheme.primary, trackColor = Color(0xFF333333), modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
                     }
                 }
             }
@@ -399,7 +408,7 @@ fun HistoryScreen(expenses: List<Expense>, onUpdate: (List<Expense>) -> Unit) {
 
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
             items(monthExpenses.sortedByDescending { it.date }) { exp ->
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editExpense = exp }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editExpense = exp }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
                             Text(exp.category, fontWeight = FontWeight.Bold, color = Color.White)
@@ -425,22 +434,29 @@ fun HistoryScreen(expenses: List<Expense>, onUpdate: (List<Expense>) -> Unit) {
 }
 
 // --- ВКЛАДКА 4: НАСТРОЙКИ ---
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonthsScreen(budgets: Map<YearMonth, Int>, onUpdate: (Map<YearMonth, Int>) -> Unit) {
     var newLimit by remember { mutableStateOf("") }
     var selectedMonth by remember { mutableStateOf(YearMonth.now().monthValue) }
     var selectedYear by remember { mutableStateOf(YearMonth.now().year) }
 
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+        focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E),
+        focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent
+    )
+
     Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
         Text("Настройка бюджета", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(modifier = Modifier.padding(16.dp)) {
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 Text("Установить новый лимит", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 12.dp))
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(value = selectedMonth.toString(), onValueChange = { selectedMonth = it.toIntOrNull() ?: 1 }, label = { Text("Месяц (1-12)", color = Color.Gray) }, modifier = Modifier.weight(1f).padding(end = 4.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
-                    OutlinedTextField(value = selectedYear.toString(), onValueChange = { selectedYear = it.toIntOrNull() ?: 2026 }, label = { Text("Год", color = Color.Gray) }, modifier = Modifier.weight(1f).padding(start = 4.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                    OutlinedTextField(value = selectedMonth.toString(), onValueChange = { selectedMonth = it.toIntOrNull() ?: 1 }, label = { Text("Месяц (1-12)", color = Color.Gray) }, modifier = Modifier.weight(1f).padding(end = 4.dp), shape = RoundedCornerShape(12.dp), colors = textFieldColors)
+                    OutlinedTextField(value = selectedYear.toString(), onValueChange = { selectedYear = it.toIntOrNull() ?: 2026 }, label = { Text("Год", color = Color.Gray) }, modifier = Modifier.weight(1f).padding(start = 4.dp), shape = RoundedCornerShape(12.dp), colors = textFieldColors)
                 }
-                OutlinedTextField(value = newLimit, onValueChange = { newLimit = it }, label = { Text("Сумма на месяц (₽)", color = Color.Gray) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                OutlinedTextField(value = newLimit, onValueChange = { newLimit = it }, label = { Text("Сумма на месяц (₽)", color = Color.Gray) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(12.dp), colors = textFieldColors)
                 Button(onClick = {
                     val limitInt = newLimit.toIntOrNull()
                     if (limitInt != null && selectedMonth in 1..12) {
@@ -449,13 +465,13 @@ fun MonthsScreen(budgets: Map<YearMonth, Int>, onUpdate: (Map<YearMonth, Int>) -
                         onUpdate(newBudgets)
                         newLimit = ""
                     }
-                }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) { Text("СОХРАНИТЬ ЛИМИТ", fontWeight = FontWeight.Bold, color = Color.Black) }
+                }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) { Text("СОХРАНИТЬ ЛИМИТ", fontWeight = FontWeight.Bold, color = Color.Black) }
             }
         }
         Text("Сохраненные лимиты", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
         LazyColumn {
             items(budgets.toList().sortedByDescending { it.first }) { (ym, limit) ->
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(ym.toString(), fontWeight = FontWeight.Bold, color = Color.White)
                         Text("$limit ₽", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)

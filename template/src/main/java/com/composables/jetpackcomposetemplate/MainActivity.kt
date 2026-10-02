@@ -32,11 +32,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -45,7 +44,7 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.math.roundToInt
 
-// --- МОДЕЛИ ДАННЫХ (Теперь с Double) ---
+// --- МОДЕЛИ ДАННЫХ ---
 data class Expense(val id: String, val amount: Double, val place: String, val category: String, val date: LocalDate)
 data class PlannedExpense(val id: String, val monthStr: String, val name: String, val amount: Double)
 data class WeekPeriod(val start: LocalDate, val end: LocalDate, val limit: Double, val spent: Double) {
@@ -148,7 +147,6 @@ fun BudgetApp() {
     
     var currentTab by remember { mutableStateOf(0) }
     
-    // Стейты для шторки добавления/редактирования
     var showAddSheet by remember { mutableStateOf(false) }
     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
     var plannedToEdit by remember { mutableStateOf<PlannedExpense?>(null) }
@@ -159,56 +157,76 @@ fun BudgetApp() {
     LaunchedEffect(categories) { Storage.saveCategories(context, categories) }
     LaunchedEffect(rolloverEnabled) { Storage.saveRollover(context, rolloverEnabled) }
 
-    Scaffold(
-        floatingActionButton = {
-            if (currentTab == 0) {
-                FloatingActionButton(onClick = { expenseToEdit = null; plannedToEdit = null; showAddSheet = true }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, shape = CircleShape) { 
-                    Icon(Icons.Default.Add, "Добавить", modifier = Modifier.size(28.dp)) 
-                }
-            }
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavigationBarItem(icon = { Icon(Icons.Default.Home, "") }, label = { Text("Главная") }, selected = currentTab == 0, onClick = { currentTab = 0 })
-                NavigationBarItem(icon = { Icon(Icons.Default.Info, "") }, label = { Text("Сводка") }, selected = currentTab == 1, onClick = { currentTab = 1 })
-                NavigationBarItem(icon = { Icon(Icons.Default.List, "") }, label = { Text("История") }, selected = currentTab == 2, onClick = { currentTab = 2 })
-                NavigationBarItem(icon = { Icon(Icons.Default.Settings, "") }, label = { Text("Бюджет") }, selected = currentTab == 3, onClick = { currentTab = 3 })
-            }
-        }
-    ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            when (currentTab) {
-                0 -> HomeScreen(expenses, planned, budgets, rolloverEnabled, onToggleRollover = { rolloverEnabled = it }, 
-                        onEditPlanned = { p -> plannedToEdit = p; expenseToEdit = null; showAddSheet = true }, 
-                        onEditExpense = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
-                1 -> AnalyticsScreen(expenses)
-                2 -> HistoryScreen(expenses, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
-                3 -> MonthsScreen(budgets, categories, onUpdateBudgets = { budgets = it }, onUpdateCategories = { old, new, newList -> 
-                        categories = newList
-                        // Обновляем историю при переименовании/удалении категории
-                        if (old != null && old != new) {
-                            val replacement = new ?: "📦 Иное"
-                            expenses = expenses.map { if (it.category == old) it.copy(category = replacement) else it }
-                        }
-                    })
-            }
-
-            if (showAddSheet) {
-                Dialog(onDismissRequest = { showAddSheet = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false }, contentAlignment = Alignment.BottomCenter) {
-                        Card(modifier = Modifier.fillMaxWidth().clickable(enabled = false) {}, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                            AddExpenseSheet(
-                                categories = categories,
-                                initialExpense = expenseToEdit,
-                                initialPlanned = plannedToEdit,
-                                onSaveExpense = { exp -> expenses = expenses.filter { it.id != exp.id } + exp; showAddSheet = false },
-                                onSavePlanned = { p -> planned = planned.filter { it.id != p.id } + p; showAddSheet = false },
-                                onDeleteExpense = { id -> expenses = expenses.filter { it.id != id }; showAddSheet = false },
-                                onDeletePlanned = { id -> planned = planned.filter { it.id != id }; showAddSheet = false }
-                            )
-                        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            floatingActionButton = {
+                if (currentTab == 0) {
+                    FloatingActionButton(onClick = { expenseToEdit = null; plannedToEdit = null; showAddSheet = true }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, shape = CircleShape) { 
+                        Icon(Icons.Default.Add, "Добавить", modifier = Modifier.size(28.dp)) 
                     }
                 }
+            },
+            bottomBar = {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    NavigationBarItem(icon = { Icon(Icons.Default.Home, "") }, label = { Text("Главная") }, selected = currentTab == 0, onClick = { currentTab = 0 })
+                    NavigationBarItem(icon = { Icon(Icons.Default.Info, "") }, label = { Text("Сводка") }, selected = currentTab == 1, onClick = { currentTab = 1 })
+                    NavigationBarItem(icon = { Icon(Icons.Default.List, "") }, label = { Text("История") }, selected = currentTab == 2, onClick = { currentTab = 2 })
+                    // Измененная иконка и название для Настроек
+                    NavigationBarItem(icon = { Icon(Icons.Default.Settings, "") }, label = { Text("Настройки") }, selected = currentTab == 3, onClick = { currentTab = 3 })
+                }
+            }
+        ) { padding ->
+            Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                when (currentTab) {
+                    0 -> HomeScreen(expenses, planned, budgets, rolloverEnabled, 
+                            onNavigateToSettings = { currentTab = 3 },
+                            onToggleRollover = { rolloverEnabled = it }, 
+                            onEditPlanned = { p -> plannedToEdit = p; expenseToEdit = null; showAddSheet = true }, 
+                            onEditExpense = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
+                    1 -> AnalyticsScreen(expenses)
+                    2 -> HistoryScreen(expenses, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
+                    3 -> SettingsScreen(budgets, categories, onUpdateBudgets = { budgets = it }, onUpdateCategories = { old, new, newList -> 
+                            categories = newList
+                            if (old != null && old != new) {
+                                val replacement = new ?: "📦 Иное"
+                                expenses = expenses.map { if (it.category == old) it.copy(category = replacement) else it }
+                            }
+                        })
+                }
+            }
+        }
+
+        // --- УМНАЯ ШТОРКА С ПЛАВНОЙ АНИМАЦИЕЙ (Без багов клавиатуры) ---
+        // 1. Анимация затемнения фона
+        AnimatedVisibility(
+            visible = showAddSheet,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false })
+        }
+
+        // 2. Анимация выезда самой шторки
+        AnimatedVisibility(
+            visible = showAddSheet,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                AddExpenseSheet(
+                    categories = categories,
+                    initialExpense = expenseToEdit,
+                    initialPlanned = plannedToEdit,
+                    onSaveExpense = { exp -> expenses = expenses.filter { it.id != exp.id } + exp; showAddSheet = false },
+                    onSavePlanned = { p -> planned = planned.filter { it.id != p.id } + p; showAddSheet = false },
+                    onDeleteExpense = { id -> expenses = expenses.filter { it.id != id }; showAddSheet = false },
+                    onDeletePlanned = { id -> planned = planned.filter { it.id != id }; showAddSheet = false }
+                )
             }
         }
     }
@@ -217,7 +235,7 @@ fun BudgetApp() {
 // --- ВКЛАДКА 1: ДАШБОРД ---
 @Composable
 fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: Map<YearMonth, Double>, rolloverEnabled: Boolean, 
-               onToggleRollover: (Boolean) -> Unit, onEditPlanned: (PlannedExpense) -> Unit, onEditExpense: (Expense) -> Unit) {
+               onNavigateToSettings: () -> Unit, onToggleRollover: (Boolean) -> Unit, onEditPlanned: (PlannedExpense) -> Unit, onEditExpense: (Expense) -> Unit) {
     var monthOffset by remember { mutableStateOf(0) }
     val displayMonth = YearMonth.now().plusMonths(monthOffset.toLong())
     val totalLimit = budgets[displayMonth]
@@ -242,7 +260,31 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
         }
 
         if (totalLimit == null) {
-            item { Text("Бюджет не задан. Настройте во вкладке 'Бюджет'.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
+            // КРАСИВЫЙ EMPTY STATE В СТИЛЕ Т-БАНКА
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("💳", fontSize = 56.sp, modifier = Modifier.padding(bottom = 16.dp))
+                        Text("Бюджет не задан", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Установите лимит на этот месяц, чтобы начать контролировать свои расходы.", fontSize = 14.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
+                        Button(
+                            onClick = onNavigateToSettings,
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("НАСТРОИТЬ БЮДЖЕТ", fontWeight = FontWeight.Bold, color = Color.Black)
+                        }
+                    }
+                }
+            }
         } else {
             val daysInMonth = displayMonth.lengthOfMonth()
             val plannedForMonth = planned.filter { it.monthStr == displayMonth.toString() }.sumOf { it.amount }
@@ -277,6 +319,8 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                             Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
                             Text(formatMoneyWhole(currentWeek.remaining), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else Color.White)
                             Text("до ${currentWeek.end.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+                            // ОБЩИЙ ЛИМИТ НА МЕСЯЦ
+                            Text("Общий лимит на месяц: ${formatMoneyWhole(totalLimit)}", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.7f), modifier = Modifier.padding(top = 16.dp))
                         }
                     }
                 }
@@ -318,7 +362,8 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
         }
     }
 }
-// --- КОМПОНЕНТ: ШТОРКА (УМНАЯ С ЧИПСАМИ) ---
+
+// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialPlanned: PlannedExpense?, 
@@ -391,7 +436,7 @@ fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialP
     }
 }
 
-// --- ВКЛАДКА 2: АНАЛИТИКА (DONUT CHART) ---
+// --- ВКЛАДКА 2: АНАЛИТИКА ---
 @Composable
 fun AnalyticsScreen(expenses: List<Expense>) {
     var monthOffset by remember { mutableStateOf(0) }
@@ -400,7 +445,6 @@ fun AnalyticsScreen(expenses: List<Expense>) {
     val totalSpent = monthExpenses.sumOf { it.amount }
     val grouped = monthExpenses.groupBy { it.category }.mapValues { it.value.sumOf { e -> e.amount } }.toList().sortedByDescending { it.second }
 
-    // Цвета для кольца в стиле Т-Банка
     val chartColors = listOf(Color(0xFFFFDD2D), Color(0xFF0A84FF), Color(0xFF32D74B), Color(0xFFFF9F0A), Color(0xFFBF5AF2), Color(0xFFFF453A), Color(0xFF64D2FF), Color(0xFF8E8E93))
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -411,7 +455,6 @@ fun AnalyticsScreen(expenses: List<Expense>) {
         }
 
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            // КОЛЬЦЕВОЙ ГРАФИК
             Box(modifier = Modifier.fillMaxWidth().height(220.dp).padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                 if (totalSpent > 0) {
                     Canvas(modifier = Modifier.size(160.dp)) {
@@ -423,9 +466,7 @@ fun AnalyticsScreen(expenses: List<Expense>) {
                         }
                     }
                 } else {
-                    Canvas(modifier = Modifier.size(160.dp)) {
-                        drawArc(color = Color(0xFF333333), startAngle = -90f, sweepAngle = 360f, useCenter = false, style = Stroke(width = 40f))
-                    }
+                    Canvas(modifier = Modifier.size(160.dp)) { drawArc(color = Color(0xFF333333), startAngle = -90f, sweepAngle = 360f, useCenter = false, style = Stroke(width = 40f)) }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Потрачено", fontSize = 12.sp, color = Color.Gray)
@@ -475,8 +516,7 @@ fun HistoryScreen(expenses: List<Expense>, onEdit: (Expense) -> Unit) {
                             Text(exp.category, fontWeight = FontWeight.Bold, color = Color.White)
                             Text("${exp.place} • ${exp.date.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 12.sp, color = Color.Gray)
                         }
-                        Text("-", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
-                        Text(formatMoneyFull(exp.amount), color = MaterialTheme.colorScheme.error)
+                        Text(formatMoneyFull(exp.amount), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -485,10 +525,10 @@ fun HistoryScreen(expenses: List<Expense>, onEdit: (Expense) -> Unit) {
     }
 }
 
-// --- ВКЛАДКА 4: НАСТРОЙКИ И КАТЕГОРИИ ---
+// --- ВКЛАДКА 4: НАСТРОЙКИ ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUpdateBudgets: (Map<YearMonth, Double>) -> Unit, onUpdateCategories: (String?, String?, List<String>) -> Unit) {
+fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUpdateBudgets: (Map<YearMonth, Double>) -> Unit, onUpdateCategories: (String?, String?, List<String>) -> Unit) {
     var newLimit by remember { mutableStateOf("") }
     var selectedMonth by remember { mutableStateOf(YearMonth.now().monthValue) }
     var selectedYear by remember { mutableStateOf(YearMonth.now().year) }
@@ -499,7 +539,8 @@ fun MonthsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUp
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent)
 
     LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-        item { Text("Бюджет", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp)) }
+        item { Text("Настройки бюджета", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp)) }
+        
         item {
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(modifier = Modifier.padding(20.dp)) {
@@ -523,7 +564,7 @@ fun MonthsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUp
         
         item {
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Категории", fontWeight = FontWeight.Bold, color = Color.Gray)
+                Text("Управление категориями", fontWeight = FontWeight.Bold, color = Color.Gray)
                 Text("+ Добавить", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { isAddingCat = true })
             }
         }
@@ -532,10 +573,21 @@ fun MonthsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUp
                 Text(cat, color = Color.White, modifier = Modifier.padding(16.dp))
             }
         }
+        
+        // --- ВОТ ОНА, ВЕРНУВШАЯСЯ ИСТОРИЯ ЛИМИТОВ ---
+        item { Text("История лимитов", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
+        items(budgets.toList().sortedByDescending { it.first }) { (ym, limit) ->
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(ym.toString(), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(formatMoneyWhole(limit), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        
         item { Spacer(modifier = Modifier.height(100.dp)) }
     }
 
-    // Диалог Категорий
     if (catToEdit != null || isAddingCat) {
         var catName by remember { mutableStateOf(catToEdit ?: "") }
         AlertDialog(

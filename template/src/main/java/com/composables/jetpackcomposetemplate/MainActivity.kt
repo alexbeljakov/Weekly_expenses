@@ -260,7 +260,7 @@ fun BudgetApp() {
     }
 }
 
-// --- ВКЛАДКА 1: ДАШБОРД ---
+// --- ВКЛАДКА 1: ДАШБОРД (ТЕПЕРЬ СВАЙПАЕТСЯ ВСЯ КАРТОЧКА ЦЕЛИКОМ) ---
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: Map<YearMonth, Double>, rolloverEnabled: Boolean, 
@@ -314,7 +314,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             var carryover = 0.0
             val weeks = mutableListOf<WeekPeriod>()
             
-             while (currentStart.month == displayMonth.month) {
+                while (currentStart.month == displayMonth.month) {
                 var currentEnd = currentStart
                 while (currentEnd.dayOfWeek.value != 7 && currentEnd.dayOfMonth < daysInMonth) { currentEnd = currentEnd.plusDays(1) }
                 val daysInWeek = currentEnd.dayOfMonth - currentStart.dayOfMonth + 1
@@ -333,32 +333,36 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 item {
                     var heroPage by remember { mutableStateOf(0) }
                     
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures(onDragEnd = {}) { change, dragAmount -> 
                                     change.consume()
                                     if (dragAmount > 30 && heroPage == 1) heroPage = 0
                                     else if (dragAmount < -30 && heroPage == 0) heroPage = 1
                                 }
-                            }, 
-                        shape = RoundedCornerShape(20.dp), 
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            
-                            // АНИМАЦИЯ СВАЙПА ТЕКСТА (Здесь используется with)
-                            AnimatedContent(
-                                targetState = heroPage,
-                                transitionSpec = {
-                                    if (targetState > initialState) {
-                                        (slideInHorizontally { it } + fadeIn()) with (slideOutHorizontally { -it } + fadeOut())
-                                    } else {
-                                        (slideInHorizontally { -it } + fadeIn()) with (slideOutHorizontally { it } + fadeOut())
-                                    }
+                        AnimatedContent(
+                            targetState = heroPage,
+                            transitionSpec = {
+                                if (targetState > initialState) {
+                                    (slideInHorizontally { it } + fadeIn()) with (slideOutHorizontally { -it } + fadeOut())
+                                } else {
+                                    (slideInHorizontally { -it } + fadeIn()) with (slideOutHorizontally { it } + fadeOut())
                                 }
-                            ) { page ->
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            },
+                            label = "HeroCardAnim"
+                        ) { page ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(20.dp), 
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                // Фиксируем высоту, чтобы при свайпе карточка не прыгала
+                                Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                     if (page == 0) {
                                         Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
                                         Text(formatMoneyWhole(currentWeek.remaining), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else Color.White)
@@ -370,12 +374,13 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                                     }
                                 }
                             }
-                            
-                            Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.Center) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (heroPage == 0) Color.White else Color.DarkGray))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (heroPage == 1) Color.White else Color.DarkGray))
-                            }
+                        }
+                        
+                        // Точки теперь лежат ПОД улетающей карточкой и стоят на месте
+                        Row(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.Center) {
+                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (heroPage == 0) Color.White else Color.DarkGray))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (heroPage == 1) Color.White else Color.DarkGray))
                         }
                     }
                 }

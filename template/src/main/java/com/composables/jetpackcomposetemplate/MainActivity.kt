@@ -261,6 +261,7 @@ fun BudgetApp() {
 }
 
 // --- ВКЛАДКА 1: ДАШБОРД ---
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: Map<YearMonth, Double>, rolloverEnabled: Boolean, 
                onNavigateToSettings: () -> Unit, onToggleRollover: (Boolean) -> Unit, onEditPlanned: (PlannedExpense) -> Unit, onEditExpense: (Expense) -> Unit) {
@@ -313,7 +314,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             var carryover = 0.0
             val weeks = mutableListOf<WeekPeriod>()
             
-            while (currentStart.month == displayMonth.month) {
+             while (currentStart.month == displayMonth.month) {
                 var currentEnd = currentStart
                 while (currentEnd.dayOfWeek.value != 7 && currentEnd.dayOfMonth < daysInMonth) { currentEnd = currentEnd.plusDays(1) }
                 val daysInWeek = currentEnd.dayOfMonth - currentStart.dayOfMonth + 1
@@ -346,17 +347,16 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                     ) {
                         Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             
-                            // АНИМАЦИЯ СВАЙПА ТЕКСТА
+                            // АНИМАЦИЯ СВАЙПА ТЕКСТА (Здесь используется with)
                             AnimatedContent(
                                 targetState = heroPage,
                                 transitionSpec = {
                                     if (targetState > initialState) {
-                                        (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                                        (slideInHorizontally { it } + fadeIn()) with (slideOutHorizontally { -it } + fadeOut())
                                     } else {
-                                        (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                                        (slideInHorizontally { -it } + fadeIn()) with (slideOutHorizontally { it } + fadeOut())
                                     }
-                                },
-                                label = "hero_anim"
+                                }
                             ) { page ->
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     if (page == 0) {

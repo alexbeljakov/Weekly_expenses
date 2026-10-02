@@ -3,8 +3,11 @@ package com.composables.jetpackcomposetemplate
 import android.app.DatePickerDialog
 import android.content.Context
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -38,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -65,7 +70,7 @@ fun formatMoneyFull(amount: Double): androidx.compose.ui.text.AnnotatedString {
 }
 fun formatMoneyWhole(amount: Double): String = "${amount.roundToInt()} ₽"
 
-// --- СОХРАНЕНИЕ ДАННЫХ ---
+// --- СОХРАНЕНИЕ ДАННЫХ И БЭКАП ---
 object Storage {
     private const val PREFS_NAME = "BudgetPrefs"
     private val DEFAULT_CATEGORIES = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
@@ -118,6 +123,33 @@ object Storage {
 
     fun saveRollover(context: Context, enabled: Boolean) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean("rollover", enabled).apply()
     fun loadRollover(context: Context): Boolean = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean("rollover", true)
+
+    // ЭКСПОРТ В JSON
+    fun exportAll(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val exportObj = JSONObject()
+        exportObj.put("expenses", JSONArray(prefs.getString("expenses", "[]")))
+        exportObj.put("planned", JSONArray(prefs.getString("planned", "[]")))
+        exportObj.put("budgets", JSONObject(prefs.getString("budgets", "{}")))
+        exportObj.put("cats", JSONArray(prefs.getString("cats", JSONArray(DEFAULT_CATEGORIES).toString())))
+        exportObj.put("rollover", prefs.getBoolean("rollover", true))
+        return exportObj.toString()
+    }
+
+    // ИМПОРТ ИЗ JSON
+    fun importAll(context: Context, jsonString: String): Boolean {
+        return try {
+            val obj = JSONObject(jsonString)
+            val edit = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            if (obj.has("expenses")) edit.putString("expenses", obj.getJSONArray("expenses").toString())
+            if (obj.has("planned")) edit.putString("planned", obj.getJSONArray("planned").toString())
+            if (obj.has("budgets")) edit.putString("budgets", obj.getJSONObject("budgets").toString())
+            if (obj.has("cats")) edit.putString("cats", obj.getJSONArray("cats").toString())
+            if (obj.has("rollover")) edit.putBoolean("rollover", obj.getBoolean("rollover"))
+            edit.apply()
+            true
+        } catch (e: Exception) { false }
+    }
 }
 
 // --- ТЕМА Т-БАНКА ---
@@ -139,11 +171,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun BudgetApp() {
     val context = LocalContext.current
-    var expenses by remember { mutableStateOf(Storage.loadExpenses(context)) }
-    var planned by remember { mutableStateOf(Storage.loadPlanned(context)) }
-    var budgets by remember { mutableStateOf(Storage.loadBudgets(context)) }
-    var categories by remember { mutableStateOf(Storage.loadCategories(context)) }
-    var rolloverEnabled by remember { mutableStateOf(Storage.loadRollover(context)) }
+    // Триггер для перезагрузки данных после импорта
+    var reloadTrigger by remember { mutableStateOf(0) }
+    
+    var expenses by remember(reloadTrigger) { mutableStateOf(Storage.loadExpenses(context)) }
+    var planned by remember(reloadTrigger) { mutableStateOf(Storage.loadPlanned(context)) }
+    var budgets by remember(reloadTrigger) { mutableStateOf(Storage.loadBudgets(context)) }
+    var categories by remember(reloadTrigger) { mutableStateOf(Storage.loadCategories(context)) }
+    var rolloverEnabled by remember(reloadTrigger) { mutableStateOf(Storage.loadRollover(context)) }
     
     var currentTab by remember { mutableStateOf(0) }
     
@@ -188,38 +223,29 @@ fun BudgetApp() {
                             onEditExpense = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
                     1 -> AnalyticsScreen(expenses)
                     2 -> HistoryScreen(expenses, historyFilters, onOpenFilter = { showFilterSheet = true }, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
-                    3 -> SettingsScreen(budgets, categories, onUpdateBudgets = { budgets = it }, onUpdateCategories = { old, new, newList -> 
-                            categories = newList
-                            if (old != null && old != new) {
-                                val replacement = new ?: "📦 Иное"
-                                expenses = expenses.map { if (it.category == old) it.copy(category = replacement) else it }
-                            }
-                        })
+                    3 -> SettingsScreen(budgets, categories, 
+                            onUpdateBudgets = { budgets = it }, 
+                            onUpdateCategories = { old, new, newList -> 
+                                categories = newList
+                                if (old != null && old != new) {
+                                    val replacement = new ?: "📦 Иное"
+                                    expenses = expenses.map { if (it.category == old) it.copy(category = replacement) else it }
+                                }
+                            },
+                            onImportSuccess = { reloadTrigger++ } // Перезагружаем интерфейс после импорта
+                        )
                 }
             }
         }
 
         // --- УМНЫЕ ШТОРКИ (Оверлей) ---
-        AnimatedVisibility(
-            visible = showAddSheet || showFilterSheet,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
+        AnimatedVisibility(visible = showAddSheet || showFilterSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false; showFilterSheet = false })
         }
 
         // Шторка добавления/редактирования
-        AnimatedVisibility(
-            visible = showAddSheet,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
+        AnimatedVisibility(visible = showAddSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
+            Card(modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 AddExpenseSheet(
                     categories = categories,
                     initialExpense = expenseToEdit,
@@ -232,29 +258,16 @@ fun BudgetApp() {
             }
         }
 
-        // Шторка фильтров истории
-        AnimatedVisibility(
-            visible = showFilterSheet,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                FilterSheet(
-                    categories = categories,
-                    selected = historyFilters,
-                    onApply = { newFilters -> historyFilters = newFilters; showFilterSheet = false }
-                )
+        // Шторка фильтров
+        AnimatedVisibility(visible = showFilterSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
+            Card(modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                FilterSheet(categories = categories, selected = historyFilters, onApply = { newFilters -> historyFilters = newFilters; showFilterSheet = false })
             }
         }
     }
 }
 
-// --- ВКЛАДКА 1: ДАШБОРД ---
+// --- ВКЛАДКА 1: ДАШБОРД (ТЕПЕРЬ С СВАЙПОМ HERO-БЛОКА) ---
 @Composable
 fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: Map<YearMonth, Double>, rolloverEnabled: Boolean, 
                onNavigateToSettings: () -> Unit, onToggleRollover: (Boolean) -> Unit, onEditPlanned: (PlannedExpense) -> Unit, onEditExpense: (Expense) -> Unit) {
@@ -297,6 +310,9 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
         } else {
             val daysInMonth = displayMonth.lengthOfMonth()
             val plannedForMonth = planned.filter { it.monthStr == displayMonth.toString() }.sumOf { it.amount }
+            val spentInMonth = expenses.filter { YearMonth.from(it.date) == displayMonth }.sumOf { it.amount }
+            val remainingMonth = totalLimit - plannedForMonth - spentInMonth
+            
             val remainingForWeeks = totalLimit - plannedForMonth
             val dailyLimit = if (remainingForWeeks > 0) remainingForWeeks / daysInMonth else 0.0
             
@@ -321,12 +337,39 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    var heroPage by remember { mutableStateOf(0) }
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                            .pointerInput(Unit) {
+                                detectHorizontalDragGestures(onDragEnd = {}) { change, dragAmount -> 
+                                    change.consume()
+                                    if (dragAmount > 30 && heroPage == 1) heroPage = 0
+                                    else if (dragAmount < -30 && heroPage == 0) heroPage = 1
+                                }
+                            }, 
+                        shape = RoundedCornerShape(20.dp), 
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
                         Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                            Text(formatMoneyWhole(currentWeek.remaining), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else Color.White)
-                            Text("до ${currentWeek.end.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
-                            Text("Общий лимит на месяц: ${formatMoneyWhole(totalLimit)}", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.7f), modifier = Modifier.padding(top = 16.dp))
+                            if (heroPage == 0) {
+                                // Страница 1: Микро (Неделя)
+                                Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text(formatMoneyWhole(currentWeek.remaining), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else Color.White)
+                                Text("до ${currentWeek.end.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+                            } else {
+                                // Страница 2: Макро (Месяц)
+                                Text("ОСТАЛОСЬ ДО КОНЦА МЕСЯЦА", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text(formatMoneyWhole(remainingMonth), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (remainingMonth < 0) MaterialTheme.colorScheme.error else Color.White)
+                                Text("Общий лимит: ${formatMoneyWhole(totalLimit)}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+                            }
+                            
+                            // Точки-индикаторы свайпа
+                            Row(modifier = Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.Center) {
+                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (heroPage == 0) Color.White else Color.DarkGray))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (heroPage == 1) Color.White else Color.DarkGray))
+                            }
                         }
                     }
                 }
@@ -457,13 +500,12 @@ fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialP
                     }
                 }
             }
-            
             OutlinedButton(onClick = { datePickerDialog.show() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp), shape = RoundedCornerShape(12.dp), border = null, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF2C2C2E))) { 
                 Text("Дата: ${selectedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", color = Color.White) 
             }
         }
         
-        // КНОПКИ (С иконкой удаления для экономии места)
+        // КНОПКИ (С иконкой удаления)
         Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (isEdit) {
                 Button(
@@ -487,7 +529,7 @@ fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialP
     }
 }
 
-// --- ВКЛАДКА 2: АНАЛИТИКА ---
+// --- ВКЛАДКА 2: АНАЛИТИКА (УМНЫЕ ЦВЕТА) ---
 @Composable
 fun AnalyticsScreen(expenses: List<Expense>) {
     var monthOffset by remember { mutableStateOf(0) }
@@ -496,7 +538,12 @@ fun AnalyticsScreen(expenses: List<Expense>) {
     val totalSpent = monthExpenses.sumOf { it.amount }
     val grouped = monthExpenses.groupBy { it.category }.mapValues { it.value.sumOf { e -> e.amount } }.toList().sortedByDescending { it.second }
 
-    val chartColors = listOf(Color(0xFFFFDD2D), Color(0xFF0A84FF), Color(0xFF32D74B), Color(0xFFFF9F0A), Color(0xFFBF5AF2), Color(0xFFFF453A), Color(0xFF64D2FF), Color(0xFF8E8E93))
+    // Умная логика цветов: если категорий 2, исключаем Голубой, берем Желтый и Зеленый
+    val chartColors = if (grouped.size == 2) {
+        listOf(Color(0xFFFFDD2D), Color(0xFF32D74B))
+    } else {
+        listOf(Color(0xFFFFDD2D), Color(0xFF0A84FF), Color(0xFF32D74B), Color(0xFFFF9F0A), Color(0xFFBF5AF2), Color(0xFFFF453A), Color(0xFF64D2FF), Color(0xFF8E8E93))
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -582,10 +629,10 @@ fun HistoryScreen(expenses: List<Expense>, filters: Set<String>, onOpenFilter: (
     }
 }
 
-// --- ВКЛАДКА 4: НАСТРОЙКИ ---
+// --- ВКЛАДКА 4: НАСТРОЙКИ (ТЕПЕРЬ С БЭКАПОМ) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUpdateBudgets: (Map<YearMonth, Double>) -> Unit, onUpdateCategories: (String?, String?, List<String>) -> Unit) {
+fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUpdateBudgets: (Map<YearMonth, Double>) -> Unit, onUpdateCategories: (String?, String?, List<String>) -> Unit, onImportSuccess: () -> Unit) {
     var newLimit by remember { mutableStateOf("") }
     var selectedMonth by remember { mutableStateOf(YearMonth.now().monthValue) }
     var selectedYear by remember { mutableStateOf(YearMonth.now().year) }
@@ -594,6 +641,29 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
     var isAddingCat by remember { mutableStateOf(false) }
 
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent)
+    val context = LocalContext.current
+
+    // Лаунчеры для Экспорта и Импорта
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(Storage.exportAll(context).toByteArray()) }
+                Toast.makeText(context, "Резервная копия сохранена!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) { Toast.makeText(context, "Ошибка сохранения", Toast.LENGTH_SHORT).show() }
+        }
+    }
+    
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.use { BufferedReader(InputStreamReader(it)).readText() }
+                if (json != null && Storage.importAll(context, json)) {
+                    Toast.makeText(context, "Данные успешно восстановлены!", Toast.LENGTH_SHORT).show()
+                    onImportSuccess() // Перезагружаем UI
+                } else { Toast.makeText(context, "Ошибка формата файла", Toast.LENGTH_SHORT).show() }
+            } catch (e: Exception) { Toast.makeText(context, "Ошибка чтения файла", Toast.LENGTH_SHORT).show() }
+        }
+    }
 
     LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
         item { Text("Настройки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp)) }
@@ -630,8 +700,26 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
                 Text(cat, color = Color.White, modifier = Modifier.padding(16.dp))
             }
         }
+
+        // БЛОК РЕЗЕРВНОГО КОПИРОВАНИЯ
+        item { Text("Резервное копирование", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
+        item {
+            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("Создайте копию данных (бэкап), чтобы не потерять историю расходов, или загрузите её на новом устройстве.", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { exportLauncher.launch("BudgetBackup_${LocalDate.now()}.json") }, modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))) {
+                            Text("Экспорт", color = Color.White)
+                        }
+                        Button(onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) }, modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))) {
+                            Text("Импорт", color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
         
-        item { Text("История лимитов", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
+        item { Text("История лимитов", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp)) }
         items(budgets.toList().sortedByDescending { it.first }) { (ym, limit) ->
             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

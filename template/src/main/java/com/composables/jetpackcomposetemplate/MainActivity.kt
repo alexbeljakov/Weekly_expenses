@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BudgetTrackerApp() {
     // Инициализация периодов
@@ -50,10 +51,10 @@ Scaffold(
 ) { padding ->
     Column(modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize()) {
         
-        // Виджет остатков по периодам
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), elevation = 4.dp) {
+        // Виджет остатков
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Текущие лимиты:")
+                Text("Текущие лимиты:", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 periods.forEach { period ->
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), 
@@ -66,7 +67,7 @@ Scaffold(
         }
 
         // Форма добавления расхода
-        Text("Добавить расход")
+        Text("Добавить расход", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = amountInput,
             onValueChange = { amountInput = it },
@@ -76,11 +77,11 @@ Scaffold(
         OutlinedTextField(
             value = placeInput,
             onValueChange = { placeInput = it },
-            label = { Text("Где потратил (место)") },
+            label = { Text("Где потратил") },
             modifier = Modifier.fillMaxWidth()
         )
         
-        // Выбор категории (простой Dropdown для совместимости)
+        // Выбор категории
         var expanded by remember { mutableStateOf(false) }
         Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Button(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -88,12 +89,13 @@ Scaffold(
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 categories.forEach { category ->
-                    DropdownMenuItem(onClick = {
-                        selectedCategory = category
-                        expanded = false
-                    }) {
-                        Text(category)
-                    }
+                    DropdownMenuItem(
+                        text = { Text(category) },
+                        onClick = {
+                            selectedCategory = category
+                            expanded = false
+                        }
+                    )
                 }
             }
         }
@@ -102,6 +104,7 @@ Scaffold(
             onClick = {
                 val amount = amountInput.toIntOrNull() ?: 0
                 if (amount > 0) {
+                    // Здесь логика вычета: пока просто вычитаем из 2-го периода
                     periods = periods.map { 
                         if (it.id == 2) it.copy(spent = it.spent + amount) else it 
                     }

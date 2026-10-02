@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -88,14 +89,14 @@ object Storage {
 
 // --- ПРЕМИАЛЬНАЯ ТЕМНАЯ ТЕМА ---
 private val PremiumDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF00E676), // Неоновый зеленый
+    primary = Color(0xFF00E676),
     onPrimary = Color.Black,
     primaryContainer = Color(0xFF1E2923),
     onPrimaryContainer = Color(0xFF00E676),
-    secondary = Color(0xFF29B6F6), // Голубой акцент
-    background = Color(0xFF0A0A0A), // Глубокий черный
-    surface = Color(0xFF141414), // Темно-серые карточки
-    error = Color(0xFFFF5252) // Яркий красный
+    secondary = Color(0xFF29B6F6),
+    background = Color(0xFF0A0A0A),
+    surface = Color(0xFF141414),
+    error = Color(0xFFFF5252)
 )
 
 class MainActivity : ComponentActivity() {
@@ -151,7 +152,6 @@ fun BudgetApp() {
             }
         }
         
-        // ВЫЕЗЖАЮЩАЯ ШТОРКА (Bottom Sheet) ДЛЯ ДОБАВЛЕНИЯ ТРАТЫ
         if (showAddSheet) {
             ModalBottomSheet(onDismissRequest = { showAddSheet = false }, containerColor = MaterialTheme.colorScheme.surface) {
                 AddExpenseSheet(
@@ -174,7 +174,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            // ШАПКА: Свайп месяца и Тогл переноса
             Row(modifier = Modifier.fillMaxWidth().padding(16.dp).pointerInput(Unit) {
                 detectHorizontalDragGestures(onDragEnd = {}) { change, dragAmount ->
                     change.consume(); if (dragAmount > 20) monthOffset -= 1 else if (dragAmount < -20) monthOffset += 1
@@ -196,7 +195,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
         if (totalLimit == null) {
             item { Text("Бюджет не задан. Настройте во вкладке 'Бюджет'.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
         } else {
-            // МАТЕМАТИКА НЕДЕЛЬ И ПЕРЕНОСА (Rollover)
             val daysInMonth = displayMonth.lengthOfMonth()
             val plannedForMonth = planned.filter { it.monthStr == displayMonth.toString() }.sumOf { it.amount }
             val remainingForWeeks = totalLimit - plannedForMonth
@@ -213,18 +211,16 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 val daysInWeek = currentEnd.dayOfMonth - currentStart.dayOfMonth + 1
                 val baseWeekLimit = (dailyLimit * daysInWeek).roundToInt()
                 
-                // Если перенос включен, плюсуем остаток прошлой недели
                 val actualLimit = if (rolloverEnabled) baseWeekLimit + carryover else baseWeekLimit
                 val spent = expenses.filter { it.date in currentStart..currentEnd }.sumOf { it.amount }
                 
                 val remaining = actualLimit - spent
-                if (rolloverEnabled) { carryover = remaining } // Переносим в следующую итерацию
+                if (rolloverEnabled) { carryover = remaining } 
                 
                 weeks.add(WeekPeriod(currentStart, currentEnd, actualLimit, spent))
                 currentStart = currentEnd.plusDays(1)
             }
 
-            // HERO-БЛОК (Твоя текущая неделя)
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
@@ -238,7 +234,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 }
             }
 
-            // СПИСОК ВСЕХ НЕДЕЛЬ С ПРОГРЕСС-БАРАМИ
             items(weeks) { week ->
                 val progress = if (week.limit > 0) (week.spent.toFloat() / week.limit.toFloat()).coerceIn(0f, 1f) else 1f
                 val isOverspent = week.remaining < 0
@@ -263,7 +258,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             }
         }
 
-        // ОТЛОЖЕННЫЕ ТРАТЫ
         item {
             val monthPlanned = planned.filter { it.monthStr == displayMonth.toString() }
             if (monthPlanned.isNotEmpty()) {
@@ -280,7 +274,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(80.dp)) // Место для FAB
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
@@ -292,7 +286,7 @@ fun AddExpenseSheet(onAdd: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> 
     var amountInput by remember { mutableStateOf("") }
     var placeInput by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("🛒 Продукты") }
-    val categories = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂️ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
+    val categories = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂️️ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
 
     Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

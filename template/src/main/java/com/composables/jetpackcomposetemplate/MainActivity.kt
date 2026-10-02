@@ -147,7 +147,11 @@ fun BudgetApp() {
     
     var currentTab by remember { mutableStateOf(0) }
     
+    // Стейты шторок
     var showAddSheet by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
+    var historyFilters by remember { mutableStateOf<Set<String>>(emptySet()) }
+    
     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
     var plannedToEdit by remember { mutableStateOf<PlannedExpense?>(null) }
 
@@ -171,7 +175,6 @@ fun BudgetApp() {
                     NavigationBarItem(icon = { Icon(Icons.Default.Home, "") }, label = { Text("Главная") }, selected = currentTab == 0, onClick = { currentTab = 0 })
                     NavigationBarItem(icon = { Icon(Icons.Default.Info, "") }, label = { Text("Сводка") }, selected = currentTab == 1, onClick = { currentTab = 1 })
                     NavigationBarItem(icon = { Icon(Icons.Default.List, "") }, label = { Text("История") }, selected = currentTab == 2, onClick = { currentTab = 2 })
-                    // Измененная иконка и название для Настроек
                     NavigationBarItem(icon = { Icon(Icons.Default.Settings, "") }, label = { Text("Настройки") }, selected = currentTab == 3, onClick = { currentTab = 3 })
                 }
             }
@@ -184,7 +187,7 @@ fun BudgetApp() {
                             onEditPlanned = { p -> plannedToEdit = p; expenseToEdit = null; showAddSheet = true }, 
                             onEditExpense = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
                     1 -> AnalyticsScreen(expenses)
-                    2 -> HistoryScreen(expenses, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
+                    2 -> HistoryScreen(expenses, historyFilters, onOpenFilter = { showFilterSheet = true }, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
                     3 -> SettingsScreen(budgets, categories, onUpdateBudgets = { budgets = it }, onUpdateCategories = { old, new, newList -> 
                             categories = newList
                             if (old != null && old != new) {
@@ -196,17 +199,16 @@ fun BudgetApp() {
             }
         }
 
-        // --- УМНАЯ ШТОРКА С ПЛАВНОЙ АНИМАЦИЕЙ (Без багов клавиатуры) ---
-        // 1. Анимация затемнения фона
+        // --- УМНЫЕ ШТОРКИ (Оверлей) ---
         AnimatedVisibility(
-            visible = showAddSheet,
+            visible = showAddSheet || showFilterSheet,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false })
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false; showFilterSheet = false })
         }
 
-        // 2. Анимация выезда самой шторки
+        // Шторка добавления/редактирования
         AnimatedVisibility(
             visible = showAddSheet,
             enter = slideInVertically(initialOffsetY = { it }),
@@ -226,6 +228,26 @@ fun BudgetApp() {
                     onSavePlanned = { p -> planned = planned.filter { it.id != p.id } + p; showAddSheet = false },
                     onDeleteExpense = { id -> expenses = expenses.filter { it.id != id }; showAddSheet = false },
                     onDeletePlanned = { id -> planned = planned.filter { it.id != id }; showAddSheet = false }
+                )
+            }
+        }
+
+        // Шторка фильтров истории
+        AnimatedVisibility(
+            visible = showFilterSheet,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                FilterSheet(
+                    categories = categories,
+                    selected = historyFilters,
+                    onApply = { newFilters -> historyFilters = newFilters; showFilterSheet = false }
                 )
             }
         }
@@ -260,26 +282,13 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
         }
 
         if (totalLimit == null) {
-            // КРАСИВЫЙ EMPTY STATE В СТИЛЕ Т-БАНКА
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                Card(modifier = Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("💳", fontSize = 56.sp, modifier = Modifier.padding(bottom = 16.dp))
                         Text("Бюджет не задан", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
                         Text("Установите лимит на этот месяц, чтобы начать контролировать свои расходы.", fontSize = 14.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
-                        Button(
-                            onClick = onNavigateToSettings,
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
+                        Button(onClick = onNavigateToSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
                             Text("НАСТРОИТЬ БЮДЖЕТ", fontWeight = FontWeight.Bold, color = Color.Black)
                         }
                     }
@@ -298,7 +307,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             while (currentStart.month == displayMonth.month) {
                 var currentEnd = currentStart
                 while (currentEnd.dayOfWeek.value != 7 && currentEnd.dayOfMonth < daysInMonth) { currentEnd = currentEnd.plusDays(1) }
-                
                 val daysInWeek = currentEnd.dayOfMonth - currentStart.dayOfMonth + 1
                 val baseWeekLimit = dailyLimit * daysInWeek
                 val actualLimit = if (rolloverEnabled) baseWeekLimit + carryover else baseWeekLimit
@@ -306,7 +314,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 
                 val remaining = actualLimit - spent
                 if (rolloverEnabled) { carryover = remaining } 
-                
                 weeks.add(WeekPeriod(currentStart, currentEnd, actualLimit, spent))
                 currentStart = currentEnd.plusDays(1)
             }
@@ -319,7 +326,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                             Text("ОСТАЛОСЬ НА ЭТОЙ НЕДЕЛЕ", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
                             Text(formatMoneyWhole(currentWeek.remaining), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = if (currentWeek.remaining < 0) MaterialTheme.colorScheme.error else Color.White)
                             Text("до ${currentWeek.end.format(DateTimeFormatter.ofPattern("dd.MM"))}", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
-                            // ОБЩИЙ ЛИМИТ НА МЕСЯЦ
                             Text("Общий лимит на месяц: ${formatMoneyWhole(totalLimit)}", fontSize = 12.sp, color = Color.Gray.copy(alpha = 0.7f), modifier = Modifier.padding(top = 16.dp))
                         }
                     }
@@ -360,6 +366,46 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             }
             Spacer(modifier = Modifier.height(100.dp))
         }
+    }
+}
+
+// --- КОМПОНЕНТ: ШТОРКА ФИЛЬТРА ИСТОРИИ ---
+@Composable
+fun FilterSheet(categories: List<String>, selected: Set<String>, onApply: (Set<String>) -> Unit) {
+    var currentSelection by remember { mutableStateOf(selected) }
+    
+    Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Фильтр категорий", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+            if (currentSelection.isNotEmpty()) {
+                Text("Сбросить", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.clickable { currentSelection = emptySet() })
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        val columns = 3
+        Column {
+            categories.chunked(columns).forEach { rowCats ->
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowCats.forEach { cat ->
+                        val isSelected = currentSelection.contains(cat)
+                        Box(modifier = Modifier.weight(1f).clickable { 
+                            currentSelection = if (isSelected) currentSelection - cat else currentSelection + cat 
+                        }.background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(cat, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
+                        }
+                    }
+                    repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+        
+        Button(
+            onClick = { onApply(currentSelection) },
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 16.dp).height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) { Text("ПОКАЗАТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }
     }
 }
 
@@ -404,7 +450,7 @@ fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialP
                         rowCats.forEach { cat ->
                             val selected = selectedCategory == cat
                             Box(modifier = Modifier.weight(1f).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                                Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
                             }
                         }
                         repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
@@ -417,9 +463,14 @@ fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialP
             }
         }
         
+        // КНОПКИ (С иконкой удаления для экономии места)
         Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (isEdit) {
-                Button(onClick = { if (isPlanned) onDeletePlanned(initialPlanned!!.id) else onDeleteExpense(initialExpense!!.id) }, modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("УДАЛИТЬ", fontWeight = FontWeight.Bold, color = Color.White) }
+                Button(
+                    onClick = { if (isPlanned) onDeletePlanned(initialPlanned!!.id) else onDeleteExpense(initialExpense!!.id) }, 
+                    modifier = Modifier.size(50.dp), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = Color.White) }
             }
             Button(
                 onClick = {
@@ -430,7 +481,7 @@ fun AddExpenseSheet(categories: List<String>, initialExpense: Expense?, initialP
                         else onSaveExpense(Expense(id, amt, placeInput, selectedCategory, selectedDate))
                     }
                 },
-                modifier = Modifier.weight(2f).height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) { Text("СОХРАНИТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }
         }
     }
@@ -496,16 +547,22 @@ fun AnalyticsScreen(expenses: List<Expense>) {
 
 // --- ВКЛАДКА 3: ИСТОРИЯ ---
 @Composable
-fun HistoryScreen(expenses: List<Expense>, onEdit: (Expense) -> Unit) {
+fun HistoryScreen(expenses: List<Expense>, filters: Set<String>, onOpenFilter: () -> Unit, onEdit: (Expense) -> Unit) {
     var monthOffset by remember { mutableStateOf(0) }
     val displayMonth = YearMonth.now().plusMonths(monthOffset.toLong())
-    val monthExpenses = expenses.filter { YearMonth.from(it.date) == displayMonth }
+    val monthExpenses = expenses.filter { YearMonth.from(it.date) == displayMonth && (filters.isEmpty() || filters.contains(it.category)) }
     
     Column(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { monthOffset -= 1 }) { Icon(Icons.Default.KeyboardArrowLeft, "Назад", tint = Color.Gray) }
             Text("История за $displayMonth", style = MaterialTheme.typography.titleMedium, color = Color.White)
-            IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.clickable { onOpenFilter() }.padding(8.dp)) {
+                    Icon(Icons.Default.Menu, "Фильтр", tint = if (filters.isNotEmpty()) MaterialTheme.colorScheme.primary else Color.Gray)
+                    if (filters.isNotEmpty()) { Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary).align(Alignment.TopEnd)) }
+                }
+                IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
+            }
         }
 
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -539,7 +596,7 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent)
 
     LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-        item { Text("Настройки бюджета", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp)) }
+        item { Text("Настройки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp)) }
         
         item {
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -574,7 +631,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
             }
         }
         
-        // --- ВОТ ОНА, ВЕРНУВШАЯСЯ ИСТОРИЯ ЛИМИТОВ ---
         item { Text("История лимитов", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
         items(budgets.toList().sortedByDescending { it.first }) { (ym, limit) ->
             Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -584,7 +640,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
                 }
             }
         }
-        
         item { Spacer(modifier = Modifier.height(100.dp)) }
     }
 

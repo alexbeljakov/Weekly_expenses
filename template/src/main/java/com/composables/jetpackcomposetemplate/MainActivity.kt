@@ -157,7 +157,8 @@ fun BudgetApp() {
 fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: Map<YearMonth, Int>, 
                onAddExpense: (Expense) -> Unit, onAddPlanned: (PlannedExpense) -> Unit, onDeletePlanned: (String) -> Unit) {
     
-    var monthOffset by remember { mutableIntStateOf(0) }
+    // ИСПРАВЛЕНО ЗДЕСЬ: используем классический mutableStateOf вместо mutableIntStateOf
+    var monthOffset by remember { mutableStateOf(0) }
     val displayMonth = YearMonth.now().plusMonths(monthOffset.toLong())
     val totalLimit = budgets[displayMonth]
 
@@ -167,7 +168,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             Card(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragEnd = { /* Snap logic omitted for simplicity */ }
+                        onDragEnd = { /* Snap logic */ }
                     ) { change, dragAmount ->
                         change.consume()
                         if (dragAmount > 20) monthOffset -= 1
@@ -220,7 +221,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             // Индикатор (3 точки)
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.Center) {
                 repeat(3) { index ->
-                    val isActive = (index == 1) // Центральная точка активна, так как мы всегда показываем 1 месяц
+                    val isActive = (index == 1) 
                     Box(modifier = Modifier.padding(4.dp).size(8.dp).clip(CircleShape).background(if (isActive) MaterialTheme.colorScheme.primary else Color.Gray))
                 }
             }
@@ -302,7 +303,8 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
 // --- ВКЛАДКА 2: АНАЛИТИКА ---
 @Composable
 fun AnalyticsScreen(expenses: List<Expense>) {
-    var monthOffset by remember { mutableIntStateOf(0) }
+    // ИСПРАВЛЕНО ЗДЕСЬ: используем классический mutableStateOf
+    var monthOffset by remember { mutableStateOf(0) }
     val displayMonth = YearMonth.now().plusMonths(monthOffset.toLong())
 
     val monthExpenses = expenses.filter { YearMonth.from(it.date) == displayMonth }

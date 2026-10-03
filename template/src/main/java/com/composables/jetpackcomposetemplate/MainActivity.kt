@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,7 +43,6 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.math.roundToInt
-
 
 data class Expense(
     val id: String = UUID.randomUUID().toString(),
@@ -86,12 +86,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun BudgetApp() {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    var currentTab by remember { mutableIntStateOf(0) } // 0: Главная, 1: Сводка, 2: История, 3: Настройки
+    var currentTab by remember { mutableStateOf(0) } // 0: Главная, 1: Сводка, 2: История, 3: Настройки
     
     // Стейты данных
     var expenses by remember { mutableStateOf(listOf(
         Expense(amount = 2052.26, place = "Магнит", category = "🛒 Продукты", date = LocalDate.now().minusDays(1)),
-        Expense(amount = 120.0, place = "Ozon", category = "🛍️ Маркетплейсы", date = LocalDate.now())
+        Expense(amount = 120.0, place = "Ozon", category = "🛍️️ Маркетплейсы", date = LocalDate.now())
     )) }
     
     var planned by remember { mutableStateOf(listOf<PlannedExpense>()) }
@@ -678,5 +678,3 @@ fun CategoryDetailSheet(
         ) { Text("ЗАКРЫТЬ", fontWeight = FontWeight.Bold, color = Color.White) }
     }
 }
-
-

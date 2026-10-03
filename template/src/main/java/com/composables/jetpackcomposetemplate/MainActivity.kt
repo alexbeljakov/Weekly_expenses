@@ -283,7 +283,7 @@ fun BudgetApp() {
                     .fillMaxWidth()
                     .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
                     .pointerInput(Unit) {
-                        androidx.compose.foundation.gestures.detectVerticalDragGestures(
+                        detectVerticalDragGestures(
                             onDragEnd = {
                                 if (offsetY > 300f) showAddSheet = false
                                 offsetY = 0f
@@ -322,7 +322,7 @@ fun BudgetApp() {
                     .fillMaxWidth()
                     .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
                     .pointerInput(Unit) {
-                        androidx.compose.foundation.gestures.detectVerticalDragGestures(
+                        detectVerticalDragGestures(
                             onDragEnd = {
                                 if (offsetY > 300f) showFilterSheet = false
                                 offsetY = 0f

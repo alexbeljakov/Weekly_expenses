@@ -241,8 +241,7 @@ fun BudgetApp() {
             HorizontalPager(
                 pageCount = 4, 
                 state = pagerState, 
-                // Добавили statusBarsPadding(), чтобы контент мягко отступал от часов
-                modifier = Modifier.padding(padding).fillMaxSize().statusBarsPadding()
+                modifier = Modifier.padding(padding).fillMaxSize()
             ) { page ->
                 when (page) {
                     0 -> HomeScreen(expenses, planned, budgets, rolloverEnabled, 

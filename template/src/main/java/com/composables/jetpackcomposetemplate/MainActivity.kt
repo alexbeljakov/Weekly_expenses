@@ -804,7 +804,7 @@ fun CategoryDetailSheet(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
-        ) { Text("ЗАКРЫТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }
+        ) { Text("ЗАКРЫТЬ", fontWeight = FontWeight.Bold, color = Color.White) }
     }
 }
 

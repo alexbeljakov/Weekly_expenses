@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(
-                colorScheme: ColorScheme = darkColorScheme(
+                colorScheme = darkColorScheme(
                     primary = Color(0xFFFFD600),
                     surface = Color(0xFF1C1C1E),
                     background = Color(0xFF121212),

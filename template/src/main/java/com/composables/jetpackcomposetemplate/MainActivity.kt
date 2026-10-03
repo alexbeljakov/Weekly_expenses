@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -507,7 +508,7 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
     }
 }
 
-// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ (АВТОКОМПЛИТ) ---
+// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ (PEEKING + FADING EDGE) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initialExpense: Expense?, initialPlanned: PlannedExpense?, 
@@ -527,7 +528,15 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
     
     val filteredPlaces = uniquePlaces.filter { it.contains(placeInput, ignoreCase = true) && it != placeInput }.take(3)
 
-    Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+    val scrollState = androidx.compose.foundation.rememberScrollState()
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .heightIn(max = screenHeight * 0.85f) // Ограничиваем высоту шторки 85% экрана
+        .padding(24.dp)
+    ) {
+        // --- 1. ЗАКРЕПЛЕННАЯ ШАПКА ---
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(if (isEdit) "Редактирование" else (if (isPlanned) "Отложенная трата" else "Новый расход"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
             if (!isEdit) {
@@ -560,26 +569,47 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
         
         if (!isPlanned) {
             Text("Категория", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-            val columns = 3
-            Column {
-                categories.chunked(columns).forEach { rowCats ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowCats.forEach { cat ->
-                            val selected = selectedCategory == cat
-                            Box(modifier = Modifier.weight(1f).height(52.dp).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-                                Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            
+            // --- 2. СКРОЛЛИРУЕМАЯ ЗОНА С ГРАДИЕНТОМ ---
+            Box(modifier = Modifier.weight(1f, fill = false)) {
+                Column(modifier = Modifier
+                    .verticalScroll(scrollState)
+                    .padding(bottom = 32.dp) // Даем отступ, чтобы нижние элементы можно было вытянуть из тумана
+                ) {
+                    val columns = 3
+                    categories.chunked(columns).forEach { rowCats ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rowCats.forEach { cat ->
+                                val selected = selectedCategory == cat
+                                Box(modifier = Modifier.weight(1f).height(52.dp).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                                    Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
                             }
+                            repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                         }
-                        repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
+                
+                // Накладываем градиент (туман) поверх нижней части списка
+                Box(modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface)
+                        )
+                    )
+                )
             }
+            
+            // --- 3. ЗАКРЕПЛЕННЫЙ ПОДВАЛ (Дата и Кнопки) ---
             OutlinedButton(onClick = { datePickerDialog.show() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp), shape = RoundedCornerShape(12.dp), border = null, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF2C2C2E))) { 
                 Text("Дата: ${selectedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", color = Color.White) 
             }
         }
         
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (isEdit) {
                 Button(
                     onClick = { if (isPlanned) onDeletePlanned(initialPlanned!!.id) else onDeleteExpense(initialExpense!!.id) }, 
@@ -591,8 +621,8 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
                 onClick = {
                     val amt = amountInput.replace(",", ".").replace(" ", "").toDoubleOrNull() ?: 0.0
                     if (amt > 0) {
-                        val id = initialExpense?.id ?: initialPlanned?.id ?: UUID.randomUUID().toString()
-                        if (isPlanned) onSavePlanned(PlannedExpense(id, initialPlanned?.monthStr ?: YearMonth.now().toString(), placeInput, amt))
+                        val id = initialExpense?.id ?: initialPlanned?.id ?: java.util.UUID.randomUUID().toString()
+                        if (isPlanned) onSavePlanned(PlannedExpense(id, initialPlanned?.monthStr ?: java.time.YearMonth.now().toString(), placeInput, amt))
                         else onSaveExpense(Expense(id, amt, placeInput, selectedCategory, selectedDate))
                     }
                 },

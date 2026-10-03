@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -486,10 +487,10 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     rowCats.forEach { cat ->
                         val isSelected = currentSelection.contains(cat)
-                        Box(modifier = Modifier.weight(1f).clickable { 
+                        Box(modifier = Modifier.weight(1f).height(52.dp).clickable { 
                             currentSelection = if (isSelected) currentSelection - cat else currentSelection + cat 
-                        }.background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                            Text(cat, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
+                        }.background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                            Text(cat, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
@@ -563,10 +564,10 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
             Column {
                 categories.chunked(columns).forEach { rowCats ->
                     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            rowCats.forEach { cat ->
+                        rowCats.forEach { cat ->
                             val selected = selectedCategory == cat
-                            Box(modifier = Modifier.weight(1f).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                                Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
+                            Box(modifier = Modifier.weight(1f).height(52.dp).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                                Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
@@ -600,6 +601,7 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
         }
     }
 }
+
 // --- ВКЛАДКА 2: АНАЛИТИКА (ЦВЕТНЫЕ ПРОГРЕСС-БАРЫ) ---
 @Composable
 fun AnalyticsScreen(expenses: List<Expense>) {
@@ -737,7 +739,7 @@ fun HistoryScreen(expenses: List<Expense>, filters: Set<String>, searchQuery: St
     }
 }
 
-// --- ВКЛАДКА 4: НАСТРОЙКИ (АККОРДЕОНЫ) ---
+// --- ВКЛАДКА 4: НАСТРОЙКИ (АККОРДЕОНЫ И СОРТИРОВКА) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUpdateBudgets: (Map<YearMonth, Double>) -> Unit, onUpdateCategories: (String?, String?, List<String>) -> Unit, onImportSuccess: () -> Unit) {
@@ -798,7 +800,7 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
                 }
             }
         }
-        // Аккордеон Категорий
+        
         item {
             Row(modifier = Modifier.fillMaxWidth().clickable { categoriesExpanded = !categoriesExpanded }.padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Управление категориями", fontWeight = FontWeight.Bold, color = Color.Gray)
@@ -809,12 +811,32 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
             item {
                 Text("+ Добавить категорию", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clickable { isAddingCat = true }.padding(vertical = 8.dp))
             }
-            items(categories) { cat ->
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { catToEdit = cat }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Text(cat, color = Color.White, modifier = Modifier.padding(16.dp))
+            items(categories.size) { index ->
+                val cat = categories[index]
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(cat, color = Color.White, modifier = Modifier.weight(1f).clickable { catToEdit = cat })
+                        Row {
+                            if (index > 0) {
+                                IconButton(onClick = { 
+                                    val newList = categories.toMutableList()
+                                    val temp = newList[index]; newList[index] = newList[index - 1]; newList[index - 1] = temp
+                                    onUpdateCategories(null, null, newList)
+                                }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.KeyboardArrowUp, "Вверх", tint = Color.Gray) }
+                            }
+                            if (index < categories.size - 1) {
+                                IconButton(onClick = { 
+                                    val newList = categories.toMutableList()
+                                    val temp = newList[index]; newList[index] = newList[index + 1]; newList[index + 1] = temp
+                                    onUpdateCategories(null, null, newList)
+                                }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.KeyboardArrowDown, "Вниз", tint = Color.Gray) }
+                            }
+                        }
+                    }
                 }
             }
         }
+
         item { Text("Резервное копирование", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
         item {
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -857,7 +879,15 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
             onDismissRequest = { catToEdit = null; isAddingCat = false },
             containerColor = MaterialTheme.colorScheme.surface,
             title = { Text(if (isAddingCat) "Новая категория" else "Изменить категорию", color = Color.White) },
-            text = { OutlinedTextField(value = catName, onValueChange = { catName = it }, label = { Text("Эмодзи и название", color = Color.Gray) }, colors = tfColors) },
+            text = { 
+                OutlinedTextField(
+                    value = catName, 
+                    onValueChange = { catName = it }, 
+                    label = { Text("Эмодзи и название", color = Color.Gray) },
+                    supportingText = { Text("Желательно до 12 символов", color = Color.Gray) },
+                    colors = tfColors
+                ) 
+            },
             confirmButton = {
                 Button(onClick = {
                     if (catName.isNotBlank()) {

@@ -7,10 +7,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -174,12 +175,13 @@ private val TBankColorScheme = darkColorScheme(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false) // Старый надежный фулскрин
         setContent { MaterialTheme(colorScheme = TBankColorScheme) { BudgetApp() } }
     }
 }
 
 // --- ОСНОВНАЯ НАВИГАЦИЯ (PAGER) ---
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BudgetApp() {
     val context = LocalContext.current
@@ -191,7 +193,7 @@ fun BudgetApp() {
     var categories by remember(reloadTrigger) { mutableStateOf(Storage.loadCategories(context)) }
     var rolloverEnabled by remember(reloadTrigger) { mutableStateOf(Storage.loadRollover(context)) }
     
-    val pagerState = rememberPagerState(pageCount = { 4 })
+    val pagerState = rememberPagerState() // pageCount перенесли ниже
     val coroutineScope = rememberCoroutineScope()
     
     var showAddSheet by remember { mutableStateOf(false) }
@@ -210,8 +212,9 @@ fun BudgetApp() {
     LaunchedEffect(categories) { Storage.saveCategories(context, categories) }
     LaunchedEffect(rolloverEnabled) { Storage.saveRollover(context, rolloverEnabled) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
+            containerColor = Color.Transparent, // Чтобы фулскрин работал корректно
             floatingActionButton = {
                 AnimatedVisibility(visible = pagerState.currentPage == 0, enter = scaleIn(), exit = scaleOut()) {
                     FloatingActionButton(onClick = { expenseToEdit = null; plannedToEdit = null; showAddSheet = true }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, shape = CircleShape) { 
@@ -229,8 +232,9 @@ fun BudgetApp() {
             }
         ) { padding ->
             HorizontalPager(
+                pageCount = 4, // Вот он, фикс для Pager
                 state = pagerState, 
-                modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)
+                modifier = Modifier.padding(padding).fillMaxSize()
             ) { page ->
                 when (page) {
                     0 -> HomeScreen(expenses, planned, budgets, rolloverEnabled, 
@@ -282,6 +286,7 @@ fun BudgetApp() {
     }
 }
 // --- ВКЛАДКА 1: ДАШБОРД ---
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: Map<YearMonth, Double>, rolloverEnabled: Boolean, 
                onNavigateToSettings: () -> Unit, onToggleRollover: (Boolean) -> Unit, onEditPlanned: (PlannedExpense) -> Unit, onEditExpense: (Expense) -> Unit) {
@@ -364,9 +369,9 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
-                    val heroPagerState = rememberPagerState(pageCount = { 2 })
+                    val heroPagerState = rememberPagerState() // Исправили Pager
                     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        HorizontalPager(state = heroPagerState, modifier = Modifier.fillMaxWidth()) { page ->
+                        HorizontalPager(pageCount = 2, state = heroPagerState, modifier = Modifier.fillMaxWidth()) { page ->
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                 shape = RoundedCornerShape(20.dp), 
@@ -550,8 +555,8 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
             val columns = 3
             Column {
                 categories.chunked(columns).forEach { rowCats ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp))
-                         rowCats.forEach { cat ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            rowCats.forEach { cat ->
                             val selected = selectedCategory == cat
                             Box(modifier = Modifier.weight(1f).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                                 Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
@@ -587,6 +592,7 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
             ) { Text("СОХРАНИТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }
         }
     }
+}
 // --- ВКЛАДКА 2: АНАЛИТИКА (ЦВЕТНЫЕ ПРОГРЕСС-БАРЫ) ---
 @Composable
 fun AnalyticsScreen(expenses: List<Expense>) {

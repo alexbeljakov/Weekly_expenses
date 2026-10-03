@@ -285,12 +285,17 @@ fun BudgetApp() {
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
-                                if (offsetY > 300f) showAddSheet = false
-                                offsetY = 0f
+                                if (offsetY > 200f) {
+                                    showAddSheet = false // (или showFilterSheet для второй шторки)
+                                } else {
+                                    offsetY = 0f // Возвращаем на место только если свайп был слишком слабым
+                                }
                             },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                if (dragAmount > 0 || offsetY > 0) {
+                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                }
                             }
                         )
                     }
@@ -324,16 +329,20 @@ fun BudgetApp() {
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
-                                if (offsetY > 300f) showFilterSheet = false
-                                offsetY = 0f
+                                if (offsetY > 200f) {
+                                    showAddSheet = false // (или showFilterSheet для второй шторки)
+                                } else {
+                                    offsetY = 0f // Возвращаем на место только если свайп был слишком слабым
+                                }
                             },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                if (dragAmount > 0 || offsetY > 0) {
+                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                }
                             }
                         )
-                    }
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
+                    }                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {

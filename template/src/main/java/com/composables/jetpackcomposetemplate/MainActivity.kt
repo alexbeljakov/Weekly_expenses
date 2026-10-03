@@ -506,7 +506,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
     }
 }
 
-// --- КОМПОНЕНТ: ШТОРКА ФИЛЬТРА ИСТОРИИ (СМАРТ-ПОИСК) ---
+// --- КОМПОНЕНТ: ШТОРКА ФИЛЬТРА ИСТОРИИ (АДАПТИВНАЯ ВЫСОТА + СКРОЛЛ) ---
 @Composable
 fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: Set<String>, searchQuery: String, onApply: (Set<String>, String) -> Unit) {
     var currentSelection by remember { mutableStateOf(selected) }
@@ -515,8 +515,9 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
     
     val filteredPlaces = uniquePlaces.filter { it.contains(currentSearch, ignoreCase = true) && it != currentSearch }.take(3)
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent, cursorColor = MaterialTheme.colorScheme.primary)
+    val scrollState = rememberScrollState()
 
-    Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Фильтр истории", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
             if (currentSelection.isNotEmpty() || currentSearch.isNotBlank()) {
@@ -543,26 +544,41 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
         }
         
         Spacer(modifier = Modifier.height(16.dp))
-        val columns = 3
-        Column {
-            categories.chunked(columns).forEach { rowCats ->
-                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    rowCats.forEach { cat ->
-                        val isSelected = currentSelection.contains(cat)
-                        Box(modifier = Modifier.weight(1f).height(52.dp).clickable { 
-                            currentSelection = if (isSelected) currentSelection - cat else currentSelection + cat 
-                        }.background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-                            Text(cat, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("Категории", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+        
+        // --- СКРОЛЛИРУЕМАЯ ЗОНА КАТЕГОРИЙ С ТУМАНОМ ---
+        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp)) {
+            Column(modifier = Modifier
+                .verticalScroll(scrollState)
+                .padding(bottom = 32.dp)
+            ) {
+                val columns = 3
+                categories.chunked(columns).forEach { rowCats ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowCats.forEach { cat ->
+                            val isSelected = currentSelection.contains(cat)
+                            Box(modifier = Modifier.weight(1f).height(52.dp).clickable { 
+                                currentSelection = if (isSelected) currentSelection - cat else currentSelection + cat 
+                            }.background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                                Text(cat, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
+                        repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+            
+            Box(modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(32.dp)
+                .background(brush = Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface)))
+            )
         }
         
         Button(
             onClick = { onApply(currentSelection, currentSearch) },
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 16.dp).height(50.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) { Text("ПОКАЗАТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }

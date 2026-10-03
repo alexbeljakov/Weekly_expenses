@@ -4,6 +4,11 @@ import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.time.LocalDate
@@ -36,6 +42,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.math.roundToInt
+
 
 data class Expense(
     val id: String = UUID.randomUUID().toString(),
@@ -353,7 +360,7 @@ fun SummaryTabContent(expenses: List<Expense>, currentMonth: YearMonth, onCatego
                             Text(cat, color = Color.White, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             LinearProgressIndicator(
-                                progress = { percent / 100f },
+                                progress = percent / 100f,
                                 modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = Color(0xFF2C2C2E)
@@ -645,7 +652,7 @@ fun CategoryDetailSheet(
                                 Text(place, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Spacer(modifier = Modifier.height(4.dp))
                                 LinearProgressIndicator(
-                                    progress = { percent / 100f },
+                                    progress = percent / 100f,
                                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
                                     color = MaterialTheme.colorScheme.primary,
                                     trackColor = Color(0xFF2C2C2E)

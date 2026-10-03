@@ -330,9 +330,9 @@ fun BudgetApp() {
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (offsetY > 200f) {
-                                    showAddSheet = false // (или showFilterSheet для второй шторки)
+                                    showFilterSheet = false
                                 } else {
-                                    offsetY = 0f // Возвращаем на место только если свайп был слишком слабым
+                                    offsetY = 0f
                                 }
                             },
                             onVerticalDrag = { change, dragAmount ->
@@ -342,7 +342,8 @@ fun BudgetApp() {
                                 }
                             }
                         )
-                    }                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
+                    }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {

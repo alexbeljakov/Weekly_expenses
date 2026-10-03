@@ -175,10 +175,17 @@ private val TBankColorScheme = darkColorScheme(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false) // Старый надежный фулскрин
+        
+        // 1. Разрешаем рисовать приложение под системными панелями
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 2. Делаем панели полностью прозрачными (теперь они подстроятся под любую тему)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        
         setContent { MaterialTheme(colorScheme = TBankColorScheme) { BudgetApp() } }
     }
 }
+
 
 // --- ОСНОВНАЯ НАВИГАЦИЯ (PAGER) ---
 @OptIn(ExperimentalFoundationApi::class)
@@ -232,9 +239,10 @@ fun BudgetApp() {
             }
         ) { padding ->
             HorizontalPager(
-                pageCount = 4, // Вот он, фикс для Pager
+                pageCount = 4, 
                 state = pagerState, 
-                modifier = Modifier.padding(padding).fillMaxSize()
+                // Добавили statusBarsPadding(), чтобы контент мягко отступал от часов
+                modifier = Modifier.padding(padding).fillMaxSize().statusBarsPadding()
             ) { page ->
                 when (page) {
                     0 -> HomeScreen(expenses, planned, budgets, rolloverEnabled, 
@@ -667,7 +675,7 @@ fun AnalyticsScreen(expenses: List<Expense>) {
                             progress = if (totalSpent > 0) (pair.second / totalSpent).toFloat() else 0f,
                             color = chartColors[index % chartColors.size],
                             trackColor = Color(0xFF333333),
-                            modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 8.dp).clip(RoundedCornerShape(2.dp))
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                         )
                     }
                 }
@@ -791,24 +799,23 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
                 }
             }
         }
-        
+        // Аккордеон Категорий
         item {
             Row(modifier = Modifier.fillMaxWidth().clickable { categoriesExpanded = !categoriesExpanded }.padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Управление категориями", fontWeight = FontWeight.Bold, color = Color.Gray)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("+ Добавить", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { isAddingCat = true })
-                    Icon(if (categoriesExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color.Gray, modifier = Modifier.padding(start = 8.dp))
-                }
+                Icon(if (categoriesExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color.Gray)
             }
         }
         if (categoriesExpanded) {
+            item {
+                Text("+ Добавить категорию", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clickable { isAddingCat = true }.padding(vertical = 8.dp))
+            }
             items(categories) { cat ->
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { catToEdit = cat }, shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Text(cat, color = Color.White, modifier = Modifier.padding(16.dp))
                 }
             }
         }
-
         item { Text("Резервное копирование", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
         item {
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {

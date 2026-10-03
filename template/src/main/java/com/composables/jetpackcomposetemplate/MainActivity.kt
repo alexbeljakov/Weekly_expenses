@@ -46,6 +46,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -87,6 +88,7 @@ fun formatMoneyFull(amount: Double): androidx.compose.ui.text.AnnotatedString {
         append(" ₽")
     }
 }
+
 fun formatMoneyWhole(amount: Double): String = "${getMoneyFormatter().format(amount)} ₽"
 
 // --- СОХРАНЕНИЕ ДАННЫХ И БЭКАП ---
@@ -99,6 +101,7 @@ object Storage {
         expenses.forEach { e -> array.put(JSONObject().apply { put("id", e.id); put("amount", e.amount); put("place", e.place); put("category", e.category); put("date", e.date.toString()) }) }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString("expenses", array.toString()).apply()
     }
+
     fun loadExpenses(context: Context): List<Expense> = try {
         val array = JSONArray(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("expenses", "[]") ?: "[]")
         List(array.length()) { i -> 
@@ -113,6 +116,7 @@ object Storage {
         planned.forEach { p -> array.put(JSONObject().apply { put("id", p.id); put("monthStr", p.monthStr); put("name", p.name); put("amount", p.amount) }) }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString("planned", array.toString()).apply()
     }
+
     fun loadPlanned(context: Context): List<PlannedExpense> = try {
         val array = JSONArray(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("planned", "[]") ?: "[]")
         List(array.length()) { i -> 
@@ -127,6 +131,7 @@ object Storage {
         budgets.forEach { (ym, limit) -> obj.put(ym.toString(), limit) }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString("budgets", obj.toString()).apply()
     }
+
     fun loadBudgets(context: Context): Map<YearMonth, Double> = try {
         val obj = JSONObject(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("budgets", "{}") ?: "{}")
         val map = mutableMapOf<YearMonth, Double>()
@@ -135,6 +140,7 @@ object Storage {
     } catch (e: Exception) { emptyMap() }
 
     fun saveCategories(context: Context, cats: List<String>) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString("cats", JSONArray(cats).toString()).apply()
+    
     fun loadCategories(context: Context): List<String> = try {
         val str = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("cats", null)
         if (str == null) DEFAULT_CATEGORIES else { val arr = JSONArray(str); List(arr.length()) { arr.getString(it) } }
@@ -180,17 +186,12 @@ private val TBankColorScheme = darkColorScheme(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 1. Разрешаем рисовать приложение под системными панелями
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
-        // 2. Делаем панели полностью прозрачными (теперь они подстроятся под любую тему)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
-        
         setContent { MaterialTheme(colorScheme = TBankColorScheme) { BudgetApp() } }
     }
 }
-
 
 // --- ОСНОВНАЯ НАВИГАЦИЯ (PAGER) ---
 @OptIn(ExperimentalFoundationApi::class)
@@ -205,17 +206,19 @@ fun BudgetApp() {
     var categories by remember(reloadTrigger) { mutableStateOf(Storage.loadCategories(context)) }
     var rolloverEnabled by remember(reloadTrigger) { mutableStateOf(Storage.loadRollover(context)) }
     
-    val pagerState = rememberPagerState() // pageCount перенесли ниже
+    val pagerState = rememberPagerState(pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
     
     var showAddSheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var selectedCategoryDetail by remember { mutableStateOf<String?>(null) } // Стейт для шторки детализации категории
+    var detailMonthStr by remember { mutableStateOf(YearMonth.now().toString()) } // Месяц для аналитики
+
     var historyFilters by remember { mutableStateOf<Set<String>>(emptySet()) }
     var historySearchQuery by remember { mutableStateOf("") }
     
     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
     var plannedToEdit by remember { mutableStateOf<PlannedExpense?>(null) }
-
     val uniquePlaces = remember(expenses) { expenses.map { it.place }.distinct().filter { it.isNotBlank() } }
 
     LaunchedEffect(expenses) { Storage.saveExpenses(context, expenses) }
@@ -226,7 +229,7 @@ fun BudgetApp() {
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
-            containerColor = Color.Transparent, // Чтобы фулскрин работал корректно
+            containerColor = Color.Transparent,
             floatingActionButton = {
                 AnimatedVisibility(visible = pagerState.currentPage == 0, enter = scaleIn(), exit = scaleOut()) {
                     FloatingActionButton(onClick = { expenseToEdit = null; plannedToEdit = null; showAddSheet = true }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, shape = CircleShape) { 
@@ -244,7 +247,6 @@ fun BudgetApp() {
             }
         ) { padding ->
             HorizontalPager(
-                pageCount = 4, 
                 state = pagerState, 
                 modifier = Modifier.padding(padding).fillMaxSize()
             ) { page ->
@@ -254,7 +256,10 @@ fun BudgetApp() {
                             onToggleRollover = { rolloverEnabled = it }, 
                             onEditPlanned = { p -> plannedToEdit = p; expenseToEdit = null; showAddSheet = true }, 
                             onEditExpense = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
-                    1 -> AnalyticsScreen(expenses)
+                    1 -> AnalyticsScreen(expenses, onCategoryClick = { cat, monthStr -> 
+                        selectedCategoryDetail = cat
+                        detailMonthStr = monthStr
+                    })
                     2 -> HistoryScreen(expenses, historyFilters, historySearchQuery, onOpenFilter = { showFilterSheet = true }, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
                     3 -> SettingsScreen(budgets, categories, 
                             onUpdateBudgets = { budgets = it }, 
@@ -272,30 +277,30 @@ fun BudgetApp() {
         }
 
         // --- УМНЫЕ ШТОРКИ ---
-        AnimatedVisibility(visible = showAddSheet || showFilterSheet, enter = fadeIn(), exit = fadeOut()) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false; showFilterSheet = false })
+        AnimatedVisibility(visible = showAddSheet || showFilterSheet || selectedCategoryDetail != null, enter = fadeIn(), exit = fadeOut()) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { 
+                showAddSheet = false
+                showFilterSheet = false
+                selectedCategoryDetail = null
+            })
         }
 
+        // 1. Шторка добавления/редактирования
         AnimatedVisibility(visible = showAddSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
             var offsetY by remember { mutableStateOf(0f) }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
+                    .offset { IntOffset(0, offsetY.roundToInt()) }
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
-                                if (offsetY > 200f) {
-                                    showAddSheet = false // (или showFilterSheet для второй шторки)
-                                } else {
-                                    offsetY = 0f // Возвращаем на место только если свайп был слишком слабым
-                                }
+                                if (offsetY > 200f) showAddSheet = false
+                                offsetY = 0f
                             },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                if (dragAmount > 0 || offsetY > 0) {
-                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
-                                }
+                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
                             }
                         )
                     }
@@ -303,7 +308,6 @@ fun BudgetApp() {
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                // Индикатор свайпа (серая таблетка)
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
                     Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
                 }
@@ -320,26 +324,22 @@ fun BudgetApp() {
             }
         }
 
+        // 2. Шторка фильтрации
         AnimatedVisibility(visible = showFilterSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
             var offsetY by remember { mutableStateOf(0f) }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
+                    .offset { IntOffset(0, offsetY.roundToInt()) }
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
-                                if (offsetY > 200f) {
-                                    showFilterSheet = false
-                                } else {
-                                    offsetY = 0f
-                                }
+                                if (offsetY > 200f) showFilterSheet = false
+                                offsetY = 0f
                             },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-                                if (dragAmount > 0 || offsetY > 0) {
-                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
-                                }
+                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
                             }
                         )
                     }
@@ -351,6 +351,43 @@ fun BudgetApp() {
                     Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
                 }
                 FilterSheet(categories = categories, uniquePlaces = uniquePlaces, selected = historyFilters, searchQuery = historySearchQuery, onApply = { newFilters, newSearch -> historyFilters = newFilters; historySearchQuery = newSearch; showFilterSheet = false })
+            }
+        }
+
+        // 3. НОВАЯ ШТОРКА: Детализация категории по местам
+        AnimatedVisibility(visible = selectedCategoryDetail != null, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
+            var offsetY by remember { mutableStateOf(0f) }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, offsetY.roundToInt()) }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (offsetY > 200f) selectedCategoryDetail = null
+                                offsetY = 0f
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                            }
+                        )
+                    }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
+                }
+                selectedCategoryDetail?.let { cat ->
+                    CategoryDetailSheet(
+                        category = cat,
+                        expenses = expenses,
+                        currentMonthStr = detailMonthStr,
+                        onClose = { selectedCategoryDetail = null }
+                    )
+                }
             }
         }
     }
@@ -396,7 +433,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
             }
         }
-
         if (totalLimit == null) {
             item {
                 Card(modifier = Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -436,13 +472,12 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 weeks.add(WeekPeriod(currentStart, currentEnd, actualLimit, spent))
                 currentStart = currentEnd.plusDays(1)
             }
-
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
-                    val heroPagerState = rememberPagerState() // Исправили Pager
+                    val heroPagerState = rememberPagerState(pageCount = { 2 })
                     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        HorizontalPager(pageCount = 2, state = heroPagerState, modifier = Modifier.fillMaxWidth()) { page ->
+                        HorizontalPager(state = heroPagerState, modifier = Modifier.fillMaxWidth()) { page ->
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                 shape = RoundedCornerShape(20.dp), 
@@ -469,18 +504,16 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                     }
                 }
             }
-
             items(weeks) { week ->
                 val progress = if (week.limit > 0) (week.spent / week.limit).toFloat().coerceIn(0f, 1f) else 1f
                 val isOverspent = week.remaining < 0
                 val barColor = if (isOverspent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${week.start.dayOfMonth}.${week.start.monthValue} - ${week.end.dayOfMonth}.${week.end.monthValue}", fontWeight = FontWeight.Bold, color = Color.White)
                         Text(formatMoneyWhole(week.remaining), fontWeight = FontWeight.Bold, color = if (isOverspent) MaterialTheme.colorScheme.error else Color.White)
                     }
-                    LinearProgressIndicator(progress = progress, color = barColor, trackColor = Color(0xFF333333), modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
+                    LinearProgressIndicator(progress = { progress }, color = barColor, trackColor = Color(0xFF333333), modifier = Modifier.fillMaxWidth().height(8.dp).padding(top = 6.dp).clip(RoundedCornerShape(4.dp)))
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Траты: ${formatMoneyWhole(week.spent)}", fontSize = 12.sp, color = Color.Gray)
                         Text("Лимит: ${formatMoneyWhole(week.limit)}", fontSize = 12.sp, color = Color.Gray)
@@ -488,7 +521,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 }
             }
         }
-
         item {
             val monthPlanned = planned.filter { it.monthStr == displayMonth.toString() }
             if (monthPlanned.isNotEmpty()) {
@@ -507,7 +539,7 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
     }
 }
 
-// --- КОМПОНЕНТ: ШТОРКА ФИЛЬТРА ИСТОРИИ (АДАПТИВНАЯ ВЫСОТА + СКРОЛЛ) ---
+// --- КОМПОНЕНТ: ШТОРКА ФИЛЬТРА ИСТОРИИ ---
 @Composable
 fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: Set<String>, searchQuery: String, onApply: (Set<String>, String) -> Unit) {
     var currentSelection by remember { mutableStateOf(selected) }
@@ -547,7 +579,6 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
         Spacer(modifier = Modifier.height(16.dp))
         Text("Категории", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
         
-        // --- СКРОЛЛИРУЕМАЯ ЗОНА КАТЕГОРИЙ С ТУМАНОМ ---
         Box(modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp)) {
             Column(modifier = Modifier
                 .verticalScroll(scrollState)
@@ -586,7 +617,7 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
     }
 }
 
-// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ (СЖАТАЯ ВЫСОТА + PEEKING) ---
+// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initialExpense: Expense?, initialPlanned: PlannedExpense?, 
@@ -599,17 +630,14 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
     var selectedCategory by remember { mutableStateOf(initialExpense?.category ?: categories.firstOrNull() ?: "📦 Иное") }
     var selectedDate by remember { mutableStateOf(initialExpense?.date ?: LocalDate.now()) }
     var showSuggestions by remember { mutableStateOf(false) }
-
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent, cursorColor = MaterialTheme.colorScheme.primary)
     val context = LocalContext.current
     val datePickerDialog = DatePickerDialog(context, { _, y, m, d -> selectedDate = LocalDate.of(y, m + 1, d) }, selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth)
     
     val filteredPlaces = uniquePlaces.filter { it.contains(placeInput, ignoreCase = true) && it != placeInput }.take(3)
-    val scrollState = androidx.compose.foundation.rememberScrollState()
+    val scrollState = rememberScrollState()
 
     Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
-        
-        // --- 1. ЗАКРЕПЛЕННАЯ ШАПКА ---
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(if (isEdit) "Редактирование" else (if (isPlanned) "Отложенная трата" else "Новый расход"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
             if (!isEdit) {
@@ -643,7 +671,6 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
         if (!isPlanned) {
             Text("Категория", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
             
-            // --- 2. СКРОЛЛИРУЕМАЯ ЗОНА (ОГРАНИЧЕНИЕ ВЫСОТЫ) ---
             Box(modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp)) {
                 Column(modifier = Modifier
                     .verticalScroll(scrollState)
@@ -655,7 +682,7 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
                             rowCats.forEach { cat ->
                                 val selected = selectedCategory == cat
                                 Box(modifier = Modifier.weight(1f).height(52.dp).clickable { selectedCategory = cat }.background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFF2C2C2E), RoundedCornerShape(12.dp)).border(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-                                    Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    Text(cat, color = if (selected) MaterialTheme.colorScheme.primary else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                             repeat(columns - rowCats.size) { Spacer(Modifier.weight(1f)) }
@@ -671,7 +698,6 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
                 )
             }
             
-            // --- 3. ЗАКРЕПЛЕННЫЙ ПОДВАЛ ---
             OutlinedButton(onClick = { datePickerDialog.show() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp), shape = RoundedCornerShape(12.dp), border = null, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF2C2C2E))) { 
                 Text("Дата: ${selectedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", color = Color.White) 
             }
@@ -689,8 +715,8 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
                 onClick = {
                     val amt = amountInput.replace(",", ".").replace(" ", "").toDoubleOrNull() ?: 0.0
                     if (amt > 0) {
-                        val id = initialExpense?.id ?: initialPlanned?.id ?: java.util.UUID.randomUUID().toString()
-                        if (isPlanned) onSavePlanned(PlannedExpense(id, initialPlanned?.monthStr ?: java.time.YearMonth.now().toString(), placeInput, amt))
+                        val id = initialExpense?.id ?: initialPlanned?.id ?: UUID.randomUUID().toString()
+                        if (isPlanned) onSavePlanned(PlannedExpense(id, initialPlanned?.monthStr ?: YearMonth.now().toString(), placeInput, amt))
                         else onSaveExpense(Expense(id, amt, placeInput, selectedCategory, selectedDate))
                     }
                 },
@@ -700,9 +726,82 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
     }
 }
 
-// --- ВКЛАДКА 2: АНАЛИТИКА (ЦВЕТНЫЕ ПРОГРЕСС-БАРЫ) ---
+// --- НОВАЯ ШТОРКА: ДЕТАЛИЗАЦИЯ КАТЕГОРИИ ПО МЕСТАМ ---
 @Composable
-fun AnalyticsScreen(expenses: List<Expense>) {
+fun CategoryDetailSheet(
+    category: String,
+    expenses: List<Expense>,
+    currentMonthStr: String,
+    onClose: () -> Unit
+) {
+    val categoryExpenses = expenses.filter { 
+        it.category == category && it.date.toString().startsWith(currentMonthStr) 
+    }
+    
+    val placeMap = categoryExpenses.groupBy { it.place.ifBlank { "Без названия" } }
+        .mapValues { entry -> entry.value.sumOf { it.amount } }
+        .entries.sortedByDescending { it.value }
+
+    val totalCategoryAmount = placeMap.sumOf { it.value }
+    val scrollState = rememberScrollState()
+
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text(category, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Всего: ${formatMoneyFull(totalCategoryAmount)}", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Траты по местам", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+
+        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+            Column(modifier = Modifier.verticalScroll(scrollState).padding(bottom = 32.dp)) {
+                if (placeMap.isEmpty()) {
+                    Text("В этом месяце трат в категории нет", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(vertical = 16.dp))
+                } else {
+                    placeMap.forEach { (place, amount) ->
+                        val percent = if (totalCategoryAmount > 0) (amount / totalCategoryAmount * 100).toInt() else 0
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(place, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { percent / 100f },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = Color(0xFF2C2C2E)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(formatMoneyFull(amount), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("$percent%", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(32.dp).background(brush = Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface))))
+        }
+
+        Button(
+            onClick = onClose,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
+        ) { Text("ЗАКРЫТЬ", fontWeight = FontWeight.Bold, color = Color.White) }
+    }
+}
+
+// --- ВКЛАДКА 2: АНАЛИТИКА (ЦВЕТНЫЕ ПРОГРЕСС-БАРЫ + КЛИК НА КАТЕГОРИЮ) ---
+@Composable
+fun AnalyticsScreen(expenses: List<Expense>, onCategoryClick: (String, String) -> Unit) {
     var monthOffset by remember { mutableStateOf(0) }
     var swiped by remember { mutableStateOf(false) }
     
@@ -710,7 +809,6 @@ fun AnalyticsScreen(expenses: List<Expense>) {
     val monthExpenses = expenses.filter { YearMonth.from(it.date) == displayMonth }
     val totalSpent = monthExpenses.sumOf { it.amount }
     val grouped = monthExpenses.groupBy { it.category }.mapValues { it.value.sumOf { e -> e.amount } }.toList().sortedByDescending { it.second }
-
     val chartColors = if (grouped.size == 2) {
         listOf(Color(0xFFFFDD2D), Color(0xFF32D74B))
     } else {
@@ -734,7 +832,6 @@ fun AnalyticsScreen(expenses: List<Expense>) {
             Text("Сводка за $displayMonth", style = MaterialTheme.typography.titleMedium, color = Color.White)
             IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
         }
-
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Box(modifier = Modifier.fillMaxWidth().height(220.dp).padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                 if (totalSpent > 0) {
@@ -754,30 +851,36 @@ fun AnalyticsScreen(expenses: List<Expense>) {
                     Text(formatMoneyWhole(totalSpent), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
-
             LazyColumn {
                 items(grouped.size) { index ->
                     val pair = grouped[index]
                     val percent = if (totalSpent > 0) ((pair.second / totalSpent) * 100).roundToInt() else 0
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(chartColors[index % chartColors.size]))
-                                Text(pair.first, color = Color.White, modifier = Modifier.padding(start = 12.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onCategoryClick(pair.first, displayMonth.toString()) },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(chartColors[index % chartColors.size]))
+                                    Text(pair.first, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(formatMoneyFull(pair.second), color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("$percent%", fontSize = 12.sp, color = Color.Gray)
+                                }
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(formatMoneyFull(pair.second), color = Color.White, fontWeight = FontWeight.Bold)
-                                Text("$percent%", fontSize = 12.sp, color = Color.Gray)
-                            }
+                            LinearProgressIndicator(
+                                progress = { if (totalSpent > 0) (pair.second / totalSpent).toFloat() else 0f },
+                                color = chartColors[index % chartColors.size],
+                                trackColor = Color(0xFF333333),
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
+                            )
                         }
-                        LinearProgressIndicator(
-                            progress = if (totalSpent > 0) (pair.second / totalSpent).toFloat() else 0f,
-                            color = chartColors[index % chartColors.size],
-                            trackColor = Color(0xFF333333),
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
-                        )
                     }
                 }
+                item { Spacer(modifier = Modifier.height(100.dp)) }
             }
         }
     }
@@ -819,7 +922,6 @@ fun HistoryScreen(expenses: List<Expense>, filters: Set<String>, searchQuery: St
                 IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
             }
         }
-
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
             items(monthExpenses.sortedByDescending { it.date }) { exp ->
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onEdit(exp) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -837,7 +939,7 @@ fun HistoryScreen(expenses: List<Expense>, filters: Set<String>, searchQuery: St
     }
 }
 
-// --- ВКЛАДКА 4: НАСТРОЙКИ (АККОРДЕОНЫ И СОРТИРОВКА) ---
+// --- ВКЛАДКА 4: НАСТРОЙКИ ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, onUpdateBudgets: (Map<YearMonth, Double>) -> Unit, onUpdateCategories: (String?, String?, List<String>) -> Unit, onImportSuccess: () -> Unit) {
@@ -850,10 +952,9 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
     
     var categoriesExpanded by remember { mutableStateOf(false) }
     var budgetsExpanded by remember { mutableStateOf(false) }
-
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent)
     val context = LocalContext.current
-
+    
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
             try {
@@ -934,7 +1035,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
                 }
             }
         }
-
         item { Text("Резервное копирование", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
         item {
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -970,7 +1070,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
         }
         item { Spacer(modifier = Modifier.height(100.dp)) }
     }
-
     if (catToEdit != null || isAddingCat) {
         var catName by remember { mutableStateOf(catToEdit ?: "") }
         AlertDialog(
@@ -1007,3 +1106,5 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
         )
     }
 }
+
+

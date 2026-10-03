@@ -271,11 +271,37 @@ fun BudgetApp() {
         }
 
         AnimatedVisibility(visible = showAddSheet || showFilterSheet, enter = fadeIn(), exit = fadeOut()) {
+        // --- УМНЫЕ ШТОРКИ ---
+        AnimatedVisibility(visible = showAddSheet || showFilterSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false; showFilterSheet = false })
         }
 
         AnimatedVisibility(visible = showAddSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
-            Card(modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            var offsetY by remember { mutableStateOf(0f) }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
+                    .pointerInput(Unit) {
+                        androidx.compose.foundation.gestures.detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (offsetY > 300f) showAddSheet = false
+                                offsetY = 0f
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                            }
+                        )
+                    }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                // Индикатор свайпа (серая таблетка)
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
+                }
                 AddExpenseSheet(
                     categories = categories,
                     uniquePlaces = uniquePlaces,
@@ -290,12 +316,36 @@ fun BudgetApp() {
         }
 
         AnimatedVisibility(visible = showFilterSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
-            Card(modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            var offsetY by remember { mutableStateOf(0f) }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
+                    .pointerInput(Unit) {
+                        androidx.compose.foundation.gestures.detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (offsetY > 300f) showFilterSheet = false
+                                offsetY = 0f
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount > 0 || offsetY > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                            }
+                        )
+                    }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
+                }
                 FilterSheet(categories = categories, uniquePlaces = uniquePlaces, selected = historyFilters, searchQuery = historySearchQuery, onApply = { newFilters, newSearch -> historyFilters = newFilters; historySearchQuery = newSearch; showFilterSheet = false })
             }
         }
     }
 }
+
 // --- ВКЛАДКА 1: ДАШБОРД ---
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -510,7 +560,7 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
     }
 }
 
-// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ (PEEKING + FADING EDGE) ---
+// --- КОМПОНЕНТ: ШТОРКА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ (СЖАТАЯ ВЫСОТА + PEEKING) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initialExpense: Expense?, initialPlanned: PlannedExpense?, 
@@ -529,15 +579,10 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
     val datePickerDialog = DatePickerDialog(context, { _, y, m, d -> selectedDate = LocalDate.of(y, m + 1, d) }, selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth)
     
     val filteredPlaces = uniquePlaces.filter { it.contains(placeInput, ignoreCase = true) && it != placeInput }.take(3)
-
     val scrollState = androidx.compose.foundation.rememberScrollState()
-    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
 
-    Column(modifier = Modifier
-        .fillMaxWidth()
-        .heightIn(max = screenHeight * 0.85f) // Ограничиваем высоту шторки 85% экрана
-        .padding(24.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
+        
         // --- 1. ЗАКРЕПЛЕННАЯ ШАПКА ---
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(if (isEdit) "Редактирование" else (if (isPlanned) "Отложенная трата" else "Новый расход"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
@@ -572,11 +617,11 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
         if (!isPlanned) {
             Text("Категория", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
             
-            // --- 2. СКРОЛЛИРУЕМАЯ ЗОНА С ГРАДИЕНТОМ ---
-            Box(modifier = Modifier.weight(1f, fill = false)) {
+            // --- 2. СКРОЛЛИРУЕМАЯ ЗОНА (ОГРАНИЧЕНИЕ ВЫСОТЫ) ---
+            Box(modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp)) {
                 Column(modifier = Modifier
                     .verticalScroll(scrollState)
-                    .padding(bottom = 32.dp) // Даем отступ, чтобы нижние элементы можно было вытянуть из тумана
+                    .padding(bottom = 32.dp)
                 ) {
                     val columns = 3
                     categories.chunked(columns).forEach { rowCats ->
@@ -592,20 +637,15 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
                     }
                 }
                 
-                // Накладываем градиент (туман) поверх нижней части списка
                 Box(modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .height(32.dp)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface)
-                        )
-                    )
+                    .background(brush = Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface)))
                 )
             }
             
-            // --- 3. ЗАКРЕПЛЕННЫЙ ПОДВАЛ (Дата и Кнопки) ---
+            // --- 3. ЗАКРЕПЛЕННЫЙ ПОДВАЛ ---
             OutlinedButton(onClick = { datePickerDialog.show() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp), shape = RoundedCornerShape(12.dp), border = null, colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF2C2C2E))) { 
                 Text("Дата: ${selectedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", color = Color.White) 
             }

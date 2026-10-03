@@ -74,7 +74,6 @@ fun getMoneyFormatter(): DecimalFormat {
     val symbols = DecimalFormatSymbols().apply { groupingSeparator = ' ' }
     return DecimalFormat("#,##0", symbols)
 }
-
 fun formatMoneyFull(amount: Double): androidx.compose.ui.text.AnnotatedString {
     val formatter = getMoneyFormatter()
     return buildAnnotatedString {
@@ -93,7 +92,6 @@ fun formatMoneyWhole(amount: Double): String = "${getMoneyFormatter().format(amo
 object Storage {
     private const val PREFS_NAME = "BudgetPrefs"
     private val DEFAULT_CATEGORIES = listOf("🛒 Продукты", "🚗 Транспорт", "🍔 Кафе", "✂ Услуги", "💊 Здоровье", "🍿 Развлечения", "🏠 Дом", "📦 Иное")
-
     fun saveExpenses(context: Context, expenses: List<Expense>) {
         val array = JSONArray()
         expenses.forEach { e -> array.put(JSONObject().apply { put("id", e.id); put("amount", e.amount); put("place", e.place); put("category", e.category); put("date", e.date.toString()) }) }
@@ -107,7 +105,6 @@ object Storage {
             Expense(obj.getString("id"), amt, obj.getString("place"), obj.getString("category"), LocalDate.parse(obj.getString("date"))) 
         }
     } catch (e: Exception) { emptyList() }
-
     fun savePlanned(context: Context, planned: List<PlannedExpense>) {
         val array = JSONArray()
         planned.forEach { p -> array.put(JSONObject().apply { put("id", p.id); put("monthStr", p.monthStr); put("name", p.name); put("amount", p.amount) }) }
@@ -121,7 +118,6 @@ object Storage {
             PlannedExpense(obj.getString("id"), obj.getString("monthStr"), obj.getString("name"), amt) 
         }
     } catch (e: Exception) { emptyList() }
-
     fun saveBudgets(context: Context, budgets: Map<YearMonth, Double>) {
         val obj = JSONObject()
         budgets.forEach { (ym, limit) -> obj.put(ym.toString(), limit) }
@@ -133,16 +129,13 @@ object Storage {
         obj.keys().forEach { key -> map[YearMonth.parse(key)] = obj.getDouble(key) }
         map
     } catch (e: Exception) { emptyMap() }
-
     fun saveCategories(context: Context, cats: List<String>) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString("cats", JSONArray(cats).toString()).apply()
     fun loadCategories(context: Context): List<String> = try {
         val str = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("cats", null)
         if (str == null) DEFAULT_CATEGORIES else { val arr = JSONArray(str); List(arr.length()) { arr.getString(it) } }
     } catch (e: Exception) { DEFAULT_CATEGORIES }
-
     fun saveRollover(context: Context, enabled: Boolean) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean("rollover", enabled).apply()
     fun loadRollover(context: Context): Boolean = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean("rollover", true)
-
     fun exportAll(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val exportObj = JSONObject()
@@ -153,7 +146,6 @@ object Storage {
         exportObj.put("rollover", prefs.getBoolean("rollover", true))
         return exportObj.toString()
     }
-
     fun importAll(context: Context, jsonString: String): Boolean {
         return try {
             val obj = JSONObject(jsonString)
@@ -191,7 +183,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-
 // --- ОСНОВНАЯ НАВИГАЦИЯ (PAGER) ---
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -213,17 +204,20 @@ fun BudgetApp() {
     var historyFilters by remember { mutableStateOf<Set<String>>(emptySet()) }
     var historySearchQuery by remember { mutableStateOf("") }
     
+    // Новые стейты для шторки аналитики по категориям
+    var selectedCategoryDetail by remember { mutableStateOf<String?>(null) }
+    var detailMonthStr by remember { mutableStateOf(YearMonth.now().toString()) }
+
     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
     var plannedToEdit by remember { mutableStateOf<PlannedExpense?>(null) }
-
     val uniquePlaces = remember(expenses) { expenses.map { it.place }.distinct().filter { it.isNotBlank() } }
-
+    
     LaunchedEffect(expenses) { Storage.saveExpenses(context, expenses) }
     LaunchedEffect(planned) { Storage.savePlanned(context, planned) }
     LaunchedEffect(budgets) { Storage.saveBudgets(context, budgets) }
     LaunchedEffect(categories) { Storage.saveCategories(context, categories) }
     LaunchedEffect(rolloverEnabled) { Storage.saveRollover(context, rolloverEnabled) }
-
+    
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
             containerColor = Color.Transparent, // Чтобы фулскрин работал корректно
@@ -254,7 +248,10 @@ fun BudgetApp() {
                             onToggleRollover = { rolloverEnabled = it }, 
                             onEditPlanned = { p -> plannedToEdit = p; expenseToEdit = null; showAddSheet = true }, 
                             onEditExpense = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
-                    1 -> AnalyticsScreen(expenses)
+                    1 -> AnalyticsScreen(expenses, onCategoryClick = { cat, monthStr -> 
+                            selectedCategoryDetail = cat
+                            detailMonthStr = monthStr
+                         })
                     2 -> HistoryScreen(expenses, historyFilters, historySearchQuery, onOpenFilter = { showFilterSheet = true }, onEdit = { e -> expenseToEdit = e; plannedToEdit = null; showAddSheet = true })
                     3 -> SettingsScreen(budgets, categories, 
                             onUpdateBudgets = { budgets = it }, 
@@ -270,12 +267,17 @@ fun BudgetApp() {
                 }
             }
         }
-
+        
         // --- УМНЫЕ ШТОРКИ ---
-        AnimatedVisibility(visible = showAddSheet || showFilterSheet, enter = fadeIn(), exit = fadeOut()) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showAddSheet = false; showFilterSheet = false })
+        AnimatedVisibility(visible = showAddSheet || showFilterSheet || selectedCategoryDetail != null, enter = fadeIn(), exit = fadeOut()) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { 
+                showAddSheet = false
+                showFilterSheet = false 
+                selectedCategoryDetail = null
+            })
         }
-
+        
+        // 1. Шторка Добавления/Редактирования
         AnimatedVisibility(visible = showAddSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
             var offsetY by remember { mutableStateOf(0f) }
             Card(
@@ -286,9 +288,9 @@ fun BudgetApp() {
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (offsetY > 200f) {
-                                    showAddSheet = false // (или showFilterSheet для второй шторки)
+                                    showAddSheet = false 
                                 } else {
-                                    offsetY = 0f // Возвращаем на место только если свайп был слишком слабым
+                                    offsetY = 0f
                                 }
                             },
                             onVerticalDrag = { change, dragAmount ->
@@ -303,7 +305,6 @@ fun BudgetApp() {
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                // Индикатор свайпа (серая таблетка)
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
                     Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
                 }
@@ -319,7 +320,8 @@ fun BudgetApp() {
                 )
             }
         }
-
+        
+        // 2. Шторка Фильтрации
         AnimatedVisibility(visible = showFilterSheet, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
             var offsetY by remember { mutableStateOf(0f) }
             Card(
@@ -353,6 +355,48 @@ fun BudgetApp() {
                 FilterSheet(categories = categories, uniquePlaces = uniquePlaces, selected = historyFilters, searchQuery = historySearchQuery, onApply = { newFilters, newSearch -> historyFilters = newFilters; historySearchQuery = newSearch; showFilterSheet = false })
             }
         }
+
+        // 3. НОВАЯ ШТОРКА: Детализация категории по местам
+        AnimatedVisibility(visible = selectedCategoryDetail != null, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it }), modifier = Modifier.align(Alignment.BottomCenter)) {
+            var offsetY by remember { mutableStateOf(0f) }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { androidx.compose.ui.unit.IntOffset(0, offsetY.roundToInt()) }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (offsetY > 200f) {
+                                    selectedCategoryDetail = null
+                                } else {
+                                    offsetY = 0f
+                                }
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount > 0 || offsetY > 0) {
+                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                }
+                            }
+                        )
+                    }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}, 
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), 
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.width(40.dp).height(4.dp).clip(CircleShape).background(Color.DarkGray))
+                }
+                selectedCategoryDetail?.let { cat ->
+                    CategoryDetailSheet(
+                        category = cat,
+                        expenses = expenses,
+                        currentMonthStr = detailMonthStr,
+                        onClose = { selectedCategoryDetail = null }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -367,7 +411,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
     val displayMonth = YearMonth.now().plusMonths(monthOffset.toLong())
     val totalLimit = budgets[displayMonth]
     val today = LocalDate.now()
-
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp).pointerInput(Unit) {
@@ -396,7 +439,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
             }
         }
-
         if (totalLimit == null) {
             item {
                 Card(modifier = Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -436,7 +478,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 weeks.add(WeekPeriod(currentStart, currentEnd, actualLimit, spent))
                 currentStart = currentEnd.plusDays(1)
             }
-
             val currentWeek = weeks.find { today in it.start..it.end }
             if (currentWeek != null && displayMonth == YearMonth.now()) {
                 item {
@@ -469,12 +510,10 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                     }
                 }
             }
-
             items(weeks) { week ->
                 val progress = if (week.limit > 0) (week.spent / week.limit).toFloat().coerceIn(0f, 1f) else 1f
                 val isOverspent = week.remaining < 0
                 val barColor = if (isOverspent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${week.start.dayOfMonth}.${week.start.monthValue} - ${week.end.dayOfMonth}.${week.end.monthValue}", fontWeight = FontWeight.Bold, color = Color.White)
@@ -488,7 +527,6 @@ fun HomeScreen(expenses: List<Expense>, planned: List<PlannedExpense>, budgets: 
                 }
             }
         }
-
         item {
             val monthPlanned = planned.filter { it.monthStr == displayMonth.toString() }
             if (monthPlanned.isNotEmpty()) {
@@ -517,7 +555,6 @@ fun FilterSheet(categories: List<String>, uniquePlaces: List<String>, selected: 
     val filteredPlaces = uniquePlaces.filter { it.contains(currentSearch, ignoreCase = true) && it != currentSearch }.take(3)
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent, cursorColor = MaterialTheme.colorScheme.primary)
     val scrollState = rememberScrollState()
-
     Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Фильтр истории", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
@@ -599,14 +636,12 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
     var selectedCategory by remember { mutableStateOf(initialExpense?.category ?: categories.firstOrNull() ?: "📦 Иное") }
     var selectedDate by remember { mutableStateOf(initialExpense?.date ?: LocalDate.now()) }
     var showSuggestions by remember { mutableStateOf(false) }
-
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent, cursorColor = MaterialTheme.colorScheme.primary)
     val context = LocalContext.current
     val datePickerDialog = DatePickerDialog(context, { _, y, m, d -> selectedDate = LocalDate.of(y, m + 1, d) }, selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth)
     
     val filteredPlaces = uniquePlaces.filter { it.contains(placeInput, ignoreCase = true) && it != placeInput }.take(3)
     val scrollState = androidx.compose.foundation.rememberScrollState()
-
     Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
         
         // --- 1. ЗАКРЕПЛЕННАЯ ШАПКА ---
@@ -700,9 +735,82 @@ fun AddExpenseSheet(categories: List<String>, uniquePlaces: List<String>, initia
     }
 }
 
+// --- НОВЫЙ КОМПОНЕНТ: ШТОРКА ДЕТАЛИЗАЦИИ КАТЕГОРИИ ПО МЕСТАМ ---
+@Composable
+fun CategoryDetailSheet(
+    category: String,
+    expenses: List<Expense>,
+    currentMonthStr: String,
+    onClose: () -> Unit
+) {
+    val categoryExpenses = expenses.filter { 
+        it.category == category && it.date.toString().startsWith(currentMonthStr) 
+    }
+    
+    val placeMap = categoryExpenses.groupBy { it.place.ifBlank { "Без названия" } }
+        .mapValues { entry -> entry.value.sumOf { it.amount } }
+        .entries.sortedByDescending { it.value }
+
+    val totalCategoryAmount = placeMap.sumOf { it.value }
+    val scrollState = rememberScrollState()
+
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text(category, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Всего: ${formatMoneyWhole(totalCategoryAmount)}", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Траты по местам", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+
+        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
+            Column(modifier = Modifier.verticalScroll(scrollState).padding(bottom = 32.dp)) {
+                if (placeMap.isEmpty()) {
+                    Text("В этом месяце трат в категории нет", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(vertical = 16.dp))
+                } else {
+                    placeMap.forEach { (place, amount) ->
+                        val percent = if (totalCategoryAmount > 0) ((amount / totalCategoryAmount) * 100).toInt() else 0
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(place, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = if (totalCategoryAmount > 0) (amount / totalCategoryAmount).toFloat() else 0f,
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = Color(0xFF2C2C2E)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(formatMoneyWhole(amount), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("$percent%", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(32.dp).background(brush = Brush.verticalGradient(colors = listOf(Color.Transparent, MaterialTheme.colorScheme.surface))))
+        }
+
+        Button(
+            onClick = onClose,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
+        ) { Text("ЗАКРЫТЬ", fontWeight = FontWeight.Bold, color = Color.Black) }
+    }
+}
+
 // --- ВКЛАДКА 2: АНАЛИТИКА (ЦВЕТНЫЕ ПРОГРЕСС-БАРЫ) ---
 @Composable
-fun AnalyticsScreen(expenses: List<Expense>) {
+fun AnalyticsScreen(expenses: List<Expense>, onCategoryClick: (String, String) -> Unit) {
     var monthOffset by remember { mutableStateOf(0) }
     var swiped by remember { mutableStateOf(false) }
     
@@ -710,13 +818,12 @@ fun AnalyticsScreen(expenses: List<Expense>) {
     val monthExpenses = expenses.filter { YearMonth.from(it.date) == displayMonth }
     val totalSpent = monthExpenses.sumOf { it.amount }
     val grouped = monthExpenses.groupBy { it.category }.mapValues { it.value.sumOf { e -> e.amount } }.toList().sortedByDescending { it.second }
-
     val chartColors = if (grouped.size == 2) {
         listOf(Color(0xFFFFDD2D), Color(0xFF32D74B))
     } else {
         listOf(Color(0xFFFFDD2D), Color(0xFF0A84FF), Color(0xFF32D74B), Color(0xFFFF9F0A), Color(0xFFBF5AF2), Color(0xFFFF453A), Color(0xFF64D2FF), Color(0xFF8E8E93))
     }
-
+    
     Column(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 16.dp).pointerInput(Unit) {
             detectHorizontalDragGestures(
@@ -734,7 +841,6 @@ fun AnalyticsScreen(expenses: List<Expense>) {
             Text("Сводка за $displayMonth", style = MaterialTheme.typography.titleMedium, color = Color.White)
             IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
         }
-
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Box(modifier = Modifier.fillMaxWidth().height(220.dp).padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                 if (totalSpent > 0) {
@@ -754,12 +860,11 @@ fun AnalyticsScreen(expenses: List<Expense>) {
                     Text(formatMoneyWhole(totalSpent), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
-
             LazyColumn {
                 items(grouped.size) { index ->
                     val pair = grouped[index]
                     val percent = if (totalSpent > 0) ((pair.second / totalSpent) * 100).roundToInt() else 0
-                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().clickable { onCategoryClick(pair.first, displayMonth.toString()) }.padding(vertical = 12.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(chartColors[index % chartColors.size]))
@@ -819,7 +924,6 @@ fun HistoryScreen(expenses: List<Expense>, filters: Set<String>, searchQuery: St
                 IconButton(onClick = { monthOffset += 1 }) { Icon(Icons.Default.KeyboardArrowRight, "Вперед", tint = Color.Gray) }
             }
         }
-
         LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
             items(monthExpenses.sortedByDescending { it.date }) { exp ->
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onEdit(exp) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -850,10 +954,8 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
     
     var categoriesExpanded by remember { mutableStateOf(false) }
     var budgetsExpanded by remember { mutableStateOf(false) }
-
     val tfColors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedContainerColor = Color(0xFF2C2C2E), unfocusedContainerColor = Color(0xFF2C2C2E), focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = Color.Transparent)
     val context = LocalContext.current
-
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
             try {
@@ -874,7 +976,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
             } catch (e: Exception) { Toast.makeText(context, "Ошибка чтения файла", Toast.LENGTH_SHORT).show() }
         }
     }
-
     LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
         item { Text("Настройки", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp)) }
         
@@ -934,7 +1035,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
                 }
             }
         }
-
         item { Text("Резервное копирование", fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp, top = 24.dp)) }
         item {
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -970,7 +1070,6 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
         }
         item { Spacer(modifier = Modifier.height(100.dp)) }
     }
-
     if (catToEdit != null || isAddingCat) {
         var catName by remember { mutableStateOf(catToEdit ?: "") }
         AlertDialog(
@@ -1007,3 +1106,5 @@ fun SettingsScreen(budgets: Map<YearMonth, Double>, categories: List<String>, on
         )
     }
 }
+
+
